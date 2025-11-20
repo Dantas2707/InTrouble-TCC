@@ -1,0 +1,65 @@
+# =========================
+# Miscellaneous
+# =========================
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# =========================
+# IDEs
+# =========================
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VS Code (descomente se quiser ignorar)
+/#.vscode/
+
+# =========================
+# Flutter / Dart / Pub
+# =========================
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+coverage/
+
+# Qualquer pasta build em qualquer nível
+build/
+**/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# =========================
+# Android / Gradle
+# =========================
+android/.gradle/
+android/local.properties
+
+# Build do app Android (onde estavam os arquivos gigantes)
+android/app/build/
+
+# Outros artefatos de build do app
+android/app/debug
+android/app/profile
+android/app/release
