@@ -516,8 +516,8 @@ class _GuardioesTabState extends State<_GuardioesTab> {
 
   Future<Map<String, String>> _tplConvite() async {
     final snap = await FirebaseFirestore.instance
-        .collection('textoEmails')
-        .doc('convite_guardião')
+        .collection('textosEmails')
+        .doc('convidar guardiāo')
         .get();
 
     if (!snap.exists) {

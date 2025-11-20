@@ -89,43 +89,83 @@ class FirestoreService {
   // ==============================================================
 
   // Função para convidar um guardião por e-mail
-  Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
-    try {
-      final QuerySnapshot userSnapshot =
-          await usuario.where('email', isEqualTo: email).get();
+Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
+  try {
+    // 1) Buscar o usuário que será guardião pelo e-mail
+    final QuerySnapshot userSnapshot =
+        await usuario.where('email', isEqualTo: email).limit(1).get();
 
-      if (userSnapshot.docs.isEmpty) {
-        debugPrint("Usuário não encontrado. Enviando convite para baixar o app.");
+    if (userSnapshot.docs.isEmpty) {
+      debugPrint(
+        "Usuário não encontrado. Enviando convite para baixar o app."
+      );
+      // Aqui você pode disparar e-mail com link do app, se quiser
+      return;
+    }
+
+    final String idGuardiao = userSnapshot.docs.first.id;
+
+    // 2) Verificar se já existe alguma relação usuário x guardião
+    final QuerySnapshot relacaoSnapshot = await guardioes
+        .where('id_usuario', isEqualTo: idUsuario)
+        .where('id_guardiao', isEqualTo: idGuardiao)
+        .limit(1) // em geral você só precisa de uma relação
+        .get();
+
+    if (relacaoSnapshot.docs.isNotEmpty) {
+      final doc = relacaoSnapshot.docs.first;
+      final data = doc.data() as Map<String, dynamic>;
+      final String status = (data['status'] ?? 'pendente') as String;
+
+      if (status == 'pendente') {
+        // Já tem convite enviado e aguardando resposta
+        throw Exception("Já existe um convite pendente para esse guardião.");
+      }
+
+      if (status == 'aceito') {
+        // Já é guardião, não faz sentido convidar de novo
+        throw Exception("Esse usuário já é seu guardião.");
+      }
+
+      if (status == 'recusado') {
+        // Convite foi recusado antes → reenvia usando o MESMO documento
+        final DocumentSnapshot senderDoc = await usuario.doc(idUsuario).get();
+        final String nomeUsuario = senderDoc.get('nome');
+
+        await doc.reference.update({
+          'nome_usuario': nomeUsuario,
+          'invitado': true,
+          'timestamp': Timestamp.now(),
+          'status': 'pendente', // volta para pendente
+        });
+
+        debugPrint(
+          "Convite reenviado para guardião que havia recusado anteriormente."
+        );
         return;
       }
 
-      final String idGuardiao = userSnapshot.docs.first.id;
-
-      final QuerySnapshot duplicado = await guardioes
-          .where('id_usuario', isEqualTo: idUsuario)
-          .where('id_guardiao', isEqualTo: idGuardiao)
-          .get();
-
-      if (duplicado.docs.isNotEmpty) {
-        throw Exception("Esta relação de guardião já existe.");
-      }
-
-      final DocumentSnapshot senderDoc = await usuario.doc(idUsuario).get();
-      final String nomeUsuario = senderDoc.get('nome');
-
-      await guardioes.add({
-        'id_usuario': idUsuario,
-        'nome_usuario': nomeUsuario,
-        'id_guardiao': idGuardiao,
-        'invitado': true,
-        'timestamp': Timestamp.now(),
-        'status': 'pendente',
-      });
-    } catch (e) {
-      debugPrint("Erro ao convidar guardião: $e");
-      throw Exception("Erro ao convidar guardião: $e");
+      // Se aparecer algum outro status inesperado, você pode tratar aqui
     }
+
+    // 3) Se não existe relação ainda, cria uma nova
+    final DocumentSnapshot senderDoc = await usuario.doc(idUsuario).get();
+    final String nomeUsuario = senderDoc.get('nome');
+
+    await guardioes.add({
+      'id_usuario': idUsuario,
+      'nome_usuario': nomeUsuario,
+      'id_guardiao': idGuardiao,
+      'invitado': true,
+      'timestamp': Timestamp.now(),
+      'status': 'pendente',
+    });
+  } catch (e) {
+    debugPrint("Erro ao convidar guardião: $e");
+    throw Exception("Erro ao convidar guardião: $e");
   }
+}
+
 
   // Função para aceitar o convite de guardião
   Future<void> aceitarConviteGuardiao(
