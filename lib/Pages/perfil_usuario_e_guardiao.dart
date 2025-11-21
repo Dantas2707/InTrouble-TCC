@@ -519,10 +519,13 @@ class _GuardioesTabState extends State<_GuardioesTab> {
 
   // SEM o filtro 'inativar' por enquanto
   final query = await col
-      .where('nome', isEqualTo: 'convidar guardião')
+      .where('nome', isEqualTo: 'convite_guardiao')
       .get();
 
+  debugPrint('[TPL_CONVITE] docs nome=convidar guardião: ${query.docs.length}');
+
   if (query.docs.isEmpty) {
+    debugPrint('[TPL_CONVITE] Nenhum template com esse nome. Usando fallback.');
     return {
       'assunto': 'Convite para ser Guardião',
       'body': 'Olá {nomeGuardiao}, {nome} convidou você para ser guardião.',
@@ -538,6 +541,7 @@ class _GuardioesTabState extends State<_GuardioesTab> {
   }).toList();
 
   if (ativos.isEmpty) {
+    debugPrint('[TPL_CONVITE] Todos os templates com esse nome estão inativados.');
     return {
       'assunto': 'Convite para ser Guardião',
       'body': 'Olá {nomeGuardiao}, {nome} convidou você para ser guardião.',

@@ -53,8 +53,11 @@ class EmailBackendService {
           )
         : null;
 
+    final subjectEncoded = _encodeSubjectRFC2047(subject);
+
     print('Enviando e-mail para: $to');
-    print('Assunto: $subject');
+    print('Assunto original: $subject');
+    print('Assunto codificado (RFC 2047): $subjectEncoded');
     print('Corpo do e-mail: $bodyFinal');
 
     try {
@@ -63,7 +66,7 @@ class EmailBackendService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'to': to,
-          'subject': subject,
+          'subject': subjectEncoded,
           'body': bodyFinal,
           'htmlBody': htmlBodyFinal,
         }),
@@ -109,7 +112,8 @@ class EmailBackendService {
       }
     }
 
-    final horaAtual = DateTime.now().toString();
+    final agora = DateTime.now();
+    final horaAtual = agora.toString().split('.').first; 
 
     final guardioesSnapshot = await FirebaseFirestore.instance
         .collection('guardiões')
@@ -164,5 +168,10 @@ class EmailBackendService {
     texto = texto.replaceAll('{token}', token ?? ''); // ✅ substitui o token
 
     return texto;
+  }
+  /// 🔹 Codifica o assunto em UTF-8 utilizando o padrão RFC 2047
+  String _encodeSubjectRFC2047(String subject) {
+    final encoded = base64Encode(utf8.encode(subject));
+    return '=?UTF-8?B?$encoded?=';
   }
 }
