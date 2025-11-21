@@ -6,10 +6,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
-// ===== NOVOS IMPORTS PARA SMS =====
 import 'package:flutter_background_messenger/flutter_background_messenger.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart';
 
 class OcorrenciaPage extends StatefulWidget {
   const OcorrenciaPage({super.key});
@@ -278,108 +277,171 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
     }
   }
 
+  // =========================================================
+  //      HELPER: CAPTURAR LOCALIZAÇÃO UMA ÚNICA VEZ
+  // =========================================================
+
+  /// Captura a localização atual UMA ÚNICA VEZ.
+  /// Retorna null se o serviço ou a permissão não estiverem disponíveis.
+  Future<Position?> _obterLocalizacaoAtual() async {
+    // Verifica se o serviço de localização está ativo
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      debugPrint('Serviço de localização desativado.');
+      return null;
+    }
+
+    // Verifica/pergunta a permissão
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        debugPrint('Permissão de localização negada pelo usuário.');
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      debugPrint('Permissão de localização negada permanentemente.');
+      return null;
+    }
+
+    try {
+      // Pega a posição uma vez só
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      return pos;
+    } catch (e) {
+      debugPrint('Erro ao obter localização: $e');
+      return null;
+    }
+  }
+
   // ------------ Registrar ocorrência ------------
 
   Future<void> _registrarOcorrencia() async {
-  if (_isSaving) return;
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Usuário não autenticado')),
-    );
-    return;
-  }
+    if (_isSaving) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Usuário não autenticado')),
+      );
+      return;
+    }
 
-  if (_tipoSelecionado == null || _gravidadeSelecionada == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Selecione tipo e gravidade')),
-    );
-    return;
-  }
+    if (_tipoSelecionado == null || _gravidadeSelecionada == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecione tipo e gravidade')),
+      );
+      return;
+    }
 
-  final relato = _relatoCtrl.text.trim();
-  final textoSocorro = _textoSocorroCtrl.text.trim();
+    final relato = _relatoCtrl.text.trim();
+    final textoSocorro = _textoSocorroCtrl.text.trim();
 
-  if (relato.isEmpty || textoSocorro.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Preencha todos os campos')),
-    );
-    return;
-  }
+    if (relato.isEmpty || textoSocorro.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Preencha todos os campos')),
+      );
+      return;
+    }
 
-  _isSaving = true;
-  setState(() {});
-  try {
-    // ================================
-    // Buscar nome do usuário no Firestore
-    // ================================
-    String nomeUsuario = 'Usuário';
-
+    _isSaving = true;
+    setState(() {});
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('usuario')
-          .doc(user.uid)
-          .get();
+      // ================================
+      // Buscar nome do usuário no Firestore
+      // ================================
+      String nomeUsuario = 'Usuário';
 
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data() as Map<String, dynamic>;
-        nomeUsuario = (data['nome'] ?? nomeUsuario).toString();
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('usuario')
+            .doc(user.uid)
+            .get();
+
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data() as Map<String, dynamic>;
+          nomeUsuario = (data['nome'] ?? nomeUsuario).toString();
+        }
+      } catch (e) {
+        debugPrint('Erro ao buscar nome do usuário: $e');
       }
+
+      // ================================
+      // Capturar data/hora e localização UMA VEZ
+      // ================================
+      final DateTime agora = DateTime.now();
+      Position? posicao;
+      try {
+        posicao = await _obterLocalizacaoAtual();
+      } catch (e) {
+        debugPrint('Erro ao capturar localização: $e');
+      }
+
+      final double? latitude = posicao?.latitude;
+      final double? longitude = posicao?.longitude;
+
+      // ================================
+      // Montar corpo do SMS
+      // ================================
+      final String smsMessage =
+          'Alerta de ocorrência!\n'
+          'Usuário: $nomeUsuario\n'
+          'Tipo: $_tipoSelecionado\n'
+          'Gravidade: $_gravidadeSelecionada\n'
+          'Mensagem: $textoSocorro';
+
+      // ================================
+      // Salva a ocorrência no Firestore
+      // (ocorrência NORMAL → isSos: false)
+      // ================================
+      await _service.addOcorrencia(
+        _tipoSelecionado!,
+        _gravidadeSelecionada!,
+        relato.toLowerCase(),
+        textoSocorro,
+        false, // enviarParaGuardiao (controle via SMS + idGuardiao)
+        anexosLocais: _anexosLocais,
+        idGuardiao:
+            _guardioesSelecionados.isEmpty ? [] : _guardioesSelecionados,
+        ownerUid: user.uid,
+        // NOVOS CAMPOS (ajustar FirestoreService para aceitar)
+        isSos: false,                 // ocorrência normal
+        latitudeInicial: latitude,    // capturada uma vez
+        longitudeInicial: longitude,  // capturada uma vez
+        dataHoraAbertura: agora,      // capturada uma vez
+      );
+
+      // Envia SMS SOMENTE para os guardiões selecionados
+      if (_guardioesSelecionados.isNotEmpty) {
+        await _enviarSmsParaGuardioesSelecionados(smsMessage);
+      }
+
+      _relatoCtrl.clear();
+      _textoSocorroCtrl.text =
+          'Atenção! Estou sob ameaça! Preciso de ajuda!';
+      setState(() {
+        _tipoSelecionado = null;
+        _gravidadeSelecionada = null;
+        _anexosLocais.clear();
+        _guardioesSelecionados.clear();
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ocorrência registrada com sucesso')),
+      );
     } catch (e) {
-      debugPrint('Erro ao buscar nome do usuário: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao registrar: $e')),
+      );
+    } finally {
+      _isSaving = false;
+      if (mounted) setState(() {});
     }
-
-    // ================================
-    // Montar corpo do SMS
-    // ================================
-    final String smsMessage =
-        'Alerta de ocorrência!\n'
-        'Usuário: $nomeUsuario\n'
-        'Tipo: $_tipoSelecionado\n'
-        'Gravidade: $_gravidadeSelecionada\n'
-        'Mensagem: $textoSocorro';
-
-    // Salva a ocorrência no Firestore
-    await _service.addOcorrencia(
-      _tipoSelecionado!,
-      _gravidadeSelecionada!,
-      relato.toLowerCase(),
-      textoSocorro,
-      false, // enviarParaGuardiao (controle via SMS + idGuardiao)
-      anexosLocais: _anexosLocais,
-      idGuardiao:
-          _guardioesSelecionados.isEmpty ? [] : _guardioesSelecionados,
-      ownerUid: user.uid,
-    );
-
-    // Envia SMS SOMENTE para os guardiões selecionados
-    if (_guardioesSelecionados.isNotEmpty) {
-      await _enviarSmsParaGuardioesSelecionados(smsMessage);
-    }
-
-    _relatoCtrl.clear();
-    _textoSocorroCtrl.text =
-        'Atenção! Estou sob ameaça! Preciso de ajuda!';
-    setState(() {
-      _tipoSelecionado = null;
-      _gravidadeSelecionada = null;
-      _anexosLocais.clear();
-      _guardioesSelecionados.clear();
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Ocorrência registrada com sucesso')),
-    );
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Erro ao registrar: $e')),
-    );
-  } finally {
-    _isSaving = false;
-    if (mounted) setState(() {});
   }
-}
-
 
   // ------------ Selecionar guardiões ------------
 

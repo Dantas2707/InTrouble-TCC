@@ -89,83 +89,82 @@ class FirestoreService {
   // ==============================================================
 
   // Função para convidar um guardião por e-mail
-Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
-  try {
-    // 1) Buscar o usuário que será guardião pelo e-mail
-    final QuerySnapshot userSnapshot =
-        await usuario.where('email', isEqualTo: email).limit(1).get();
+  Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
+    try {
+      // 1) Buscar o usuário que será guardião pelo e-mail
+      final QuerySnapshot userSnapshot =
+          await usuario.where('email', isEqualTo: email).limit(1).get();
 
-    if (userSnapshot.docs.isEmpty) {
-      debugPrint(
-        "Usuário não encontrado. Enviando convite para baixar o app."
-      );
-      // Aqui você pode disparar e-mail com link do app, se quiser
-      return;
-    }
-
-    final String idGuardiao = userSnapshot.docs.first.id;
-
-    // 2) Verificar se já existe alguma relação usuário x guardião
-    final QuerySnapshot relacaoSnapshot = await guardioes
-        .where('id_usuario', isEqualTo: idUsuario)
-        .where('id_guardiao', isEqualTo: idGuardiao)
-        .limit(1) // em geral você só precisa de uma relação
-        .get();
-
-    if (relacaoSnapshot.docs.isNotEmpty) {
-      final doc = relacaoSnapshot.docs.first;
-      final data = doc.data() as Map<String, dynamic>;
-      final String status = (data['status'] ?? 'pendente') as String;
-
-      if (status == 'pendente') {
-        // Já tem convite enviado e aguardando resposta
-        throw Exception("Já existe um convite pendente para esse guardião.");
-      }
-
-      if (status == 'aceito') {
-        // Já é guardião, não faz sentido convidar de novo
-        throw Exception("Esse usuário já é seu guardião.");
-      }
-
-      if (status == 'recusado') {
-        // Convite foi recusado antes → reenvia usando o MESMO documento
-        final DocumentSnapshot senderDoc = await usuario.doc(idUsuario).get();
-        final String nomeUsuario = senderDoc.get('nome');
-
-        await doc.reference.update({
-          'nome_usuario': nomeUsuario,
-          'invitado': true,
-          'timestamp': Timestamp.now(),
-          'status': 'pendente', // volta para pendente
-        });
-
+      if (userSnapshot.docs.isEmpty) {
         debugPrint(
-          "Convite reenviado para guardião que havia recusado anteriormente."
+          "Usuário não encontrado. Enviando convite para baixar o app."
         );
+        // Aqui você pode disparar e-mail com link do app, se quiser
         return;
       }
 
-      // Se aparecer algum outro status inesperado, você pode tratar aqui
+      final String idGuardiao = userSnapshot.docs.first.id;
+
+      // 2) Verificar se já existe alguma relação usuário x guardião
+      final QuerySnapshot relacaoSnapshot = await guardioes
+          .where('id_usuario', isEqualTo: idUsuario)
+          .where('id_guardiao', isEqualTo: idGuardiao)
+          .limit(1) // em geral você só precisa de uma relação
+          .get();
+
+      if (relacaoSnapshot.docs.isNotEmpty) {
+        final doc = relacaoSnapshot.docs.first;
+        final data = doc.data() as Map<String, dynamic>;
+        final String status = (data['status'] ?? 'pendente') as String;
+
+        if (status == 'pendente') {
+          // Já tem convite enviado e aguardando resposta
+          throw Exception("Já existe um convite pendente para esse guardião.");
+        }
+
+        if (status == 'aceito') {
+          // Já é guardião, não faz sentido convidar de novo
+          throw Exception("Esse usuário já é seu guardião.");
+        }
+
+        if (status == 'recusado') {
+          // Convite foi recusado antes → reenvia usando o MESMO documento
+          final DocumentSnapshot senderDoc = await usuario.doc(idUsuario).get();
+          final String nomeUsuario = senderDoc.get('nome');
+
+          await doc.reference.update({
+            'nome_usuario': nomeUsuario,
+            'invitado': true,
+            'timestamp': Timestamp.now(),
+            'status': 'pendente', // volta para pendente
+          });
+
+          debugPrint(
+            "Convite reenviado para guardião que havia recusado anteriormente."
+          );
+          return;
+        }
+
+        // Se aparecer algum outro status inesperado, você pode tratar aqui
+      }
+
+      // 3) Se não existe relação ainda, cria uma nova
+      final DocumentSnapshot senderDoc = await usuario.doc(idUsuario).get();
+      final String nomeUsuario = senderDoc.get('nome');
+
+      await guardioes.add({
+        'id_usuario': idUsuario,
+        'nome_usuario': nomeUsuario,
+        'id_guardiao': idGuardiao,
+        'invitado': true,
+        'timestamp': Timestamp.now(),
+        'status': 'pendente',
+      });
+    } catch (e) {
+      debugPrint("Erro ao convidar guardião: $e");
+      throw Exception("Erro ao convidar guardião: $e");
     }
-
-    // 3) Se não existe relação ainda, cria uma nova
-    final DocumentSnapshot senderDoc = await usuario.doc(idUsuario).get();
-    final String nomeUsuario = senderDoc.get('nome');
-
-    await guardioes.add({
-      'id_usuario': idUsuario,
-      'nome_usuario': nomeUsuario,
-      'id_guardiao': idGuardiao,
-      'invitado': true,
-      'timestamp': Timestamp.now(),
-      'status': 'pendente',
-    });
-  } catch (e) {
-    debugPrint("Erro ao convidar guardião: $e");
-    throw Exception("Erro ao convidar guardião: $e");
   }
-}
-
 
   // Função para aceitar o convite de guardião
   Future<void> aceitarConviteGuardiao(
@@ -426,6 +425,8 @@ Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
       longitude: longitude,
       idGuardiao: listaGuardioes,
       ownerUid: ownerUid,
+      isSos: true, // deixa explícito que é SOS
+      dataHoraAbertura: DateTime.now(),
     );
 
     return ocId;
@@ -434,7 +435,12 @@ Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
   // ==============================================================
   // OCORRÊNCIAS (LOCAL + NUVEM)
   // ==============================================================
-  /// Wrapper compatível
+
+  /// Cria uma ocorrência (normal ou SOS).
+  ///
+  /// Uso típico:
+  /// - Tela normal: passa `isSos: false`, `latitudeInicial`, `longitudeInicial`, `dataHoraAbertura`.
+  /// - Fluxo SOS: passa `isSos: true` e/ou tipo "SOS", usando `latitude`.
   Future<String> addOcorrencia(
     String tipo,
     String gravidade,
@@ -442,22 +448,31 @@ Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
     String textoSocorro,
     bool enviarParaGuardiao, {
     List<String>? anexosLocais,
-    double? latitude,
+    double? latitude,          // ainda usado pelo fluxo SOS
     double? longitude,
-    List<String>? idGuardiao, // Lista de IDs de guardiões
-    required String ownerUid, // ID do usuário criador da ocorrência
+    List<String>? idGuardiao,  // Lista de IDs de guardiões
+    required String ownerUid,  // ID do usuário criador da ocorrência
+
+    // novos parâmetros para compatibilizar com tela_registrar_ocorrencia.dart
+    bool? isSos,
+    double? latitudeInicial,
+    double? longitudeInicial,
+    DateTime? dataHoraAbertura,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('Usuário não autenticado');
 
     final midiasLocais = List<String>.from(anexosLocais ?? const []);
-    final isSOS = (tipo.toUpperCase() == 'SOS');
+    final bool sosFlag = isSos ?? (tipo.toUpperCase() == 'SOS');
 
-    // Criação do documento de ocorrência
-    final ocRef = await ocorrencias.add({
-      'ownerUid': ownerUid, // ID do usuário criador da ocorrência
-      'id_guardiao':
-          idGuardiao ?? [], // Passa os IDs dos guardiões selecionados (lista de IDs)
+    // Se latitude/longitude "diretas" não vierem, usa as iniciais
+    final double? latEfetiva = latitude ?? latitudeInicial;
+    final double? lonEfetiva = longitude ?? longitudeInicial;
+    final DateTime agora = dataHoraAbertura ?? DateTime.now();
+
+    final Map<String, dynamic> baseData = {
+      'ownerUid': ownerUid,
+      'id_guardiao': idGuardiao ?? [],
       'descricao': relato,
       'status': 'aberto',
       'gravidade': gravidade,
@@ -467,9 +482,15 @@ Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
       'criadoEm': FieldValue.serverTimestamp(),
       'anexosLocais': midiasLocais,
       'anexos': [],
-      if (latitude != null) 'latitude': latitude,
-      if (longitude != null) 'longitude': longitude,
-    });
+      'isSos': sosFlag,
+      'dataHoraAbertura': agora,
+    };
+
+    if (latEfetiva != null) baseData['latitude'] = latEfetiva;
+    if (lonEfetiva != null) baseData['longitude'] = lonEfetiva;
+
+    // Criação do documento de ocorrência
+    final ocRef = await ocorrencias.add(baseData);
 
     final ocId = ocRef.id;
 
@@ -496,7 +517,7 @@ Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
       }
 
       // Histórico inicial, se não for SOS
-      if (!isSOS) {
+      if (!sosFlag) {
         await ocRef.collection('historico').add({
           'acao': 'criado',
           'autorUid': user.uid,
@@ -504,8 +525,8 @@ Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
           'gravidade': gravidade,
           'relato': relato,
           'textoSocorro': textoSocorro,
-          'latitude': latitude,
-          'longitude': longitude,
+          'latitude': latEfetiva,
+          'longitude': lonEfetiva,
           'criadoEm': FieldValue.serverTimestamp(),
           'midiasLocais': midiasLocais,
           'midiasCloud': urlsCloud,
@@ -513,7 +534,7 @@ Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
       }
     } else {
       // Sem anexos locais
-      if (!isSOS) {
+      if (!sosFlag) {
         await ocRef.collection('historico').add({
           'acao': 'criado',
           'autorUid': user.uid,
@@ -521,8 +542,8 @@ Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
           'gravidade': gravidade,
           'relato': relato,
           'textoSocorro': textoSocorro,
-          'latitude': latitude,
-          'longitude': longitude,
+          'latitude': latEfetiva,
+          'longitude': lonEfetiva,
           'criadoEm': FieldValue.serverTimestamp(),
           'midiasLocais': const <String>[],
           'midiasCloud': const <String>[],
@@ -692,6 +713,8 @@ Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
     return q.orderBy('criadoEm', descending: true).snapshots();
   }
 
+  /// Agora filtra apenas o SOS aberto (`isSos == true`),
+  /// para o tracker não pegar ocorrência normal.
   Future<String?> _getSosAbertoDocIdAtual() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('Usuário não autenticado');
@@ -699,6 +722,7 @@ Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
     final snap = await ocorrencias
         .where('ownerUid', isEqualTo: user.uid)
         .where('status', isEqualTo: 'aberto')
+        .where('isSos', isEqualTo: true)
         .limit(1)
         .get();
 

@@ -82,7 +82,7 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
   }
 
   // =========================================================
-  //              HELPERS DE SMS PARA O SOS
+  //              HELPERS DE SMS / GUARDIÕES
   // =========================================================
 
   /// Pede permissão para enviar SMS.
@@ -108,10 +108,44 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     }
   }
 
-  /// Envia SMS de SOS para TODOS os guardiões aceitos desse usuário.
-  Future<void> _enviarSmsSosParaGuardioes(String mensagem) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+  /// Busca IDs dos guardiões do usuário com status 'aceito' ou 'ativo'.
+  Future<List<String>> _buscarGuardioesAceitosEAtivos(String uid) async {
+    final aceitosSnap = await FirebaseFirestore.instance
+        .collection('guardiões')
+        .where('id_usuario', isEqualTo: uid)
+        .where('status', isEqualTo: 'aceito')
+        .get();
+
+    final ativosSnap = await FirebaseFirestore.instance
+        .collection('guardiões')
+        .where('id_usuario', isEqualTo: uid)
+        .where('status', isEqualTo: 'ativo')
+        .get();
+
+    final idsSet = <String>{};
+
+    for (final doc in aceitosSnap.docs) {
+      final idG = (doc['id_guardiao'] as String?) ?? '';
+      if (idG.isNotEmpty) idsSet.add(idG);
+    }
+
+    for (final doc in ativosSnap.docs) {
+      final idG = (doc['id_guardiao'] as String?) ?? '';
+      if (idG.isNotEmpty) idsSet.add(idG);
+    }
+
+    return idsSet.toList();
+  }
+
+  /// Envia SMS de SOS para a lista de guardiões informada.
+  Future<void> _enviarSmsSosParaGuardioes({
+    required String mensagem,
+    required List<String> guardioesIds,
+  }) async {
+    if (guardioesIds.isEmpty) {
+      debugPrint("Nenhum guardião para envio de SMS SOS.");
+      return;
+    }
 
     // Pede permissão de SMS
     final granted = await _requestSmsPermission();
@@ -126,50 +160,32 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
       return;
     }
 
-    try {
-      // Buscar guardiões aceitos desse usuário na coleção 'guardiões'
-      final guardioesSnapshot = await FirebaseFirestore.instance
-          .collection('guardiões')
-          .where('status', isEqualTo: 'aceito')
-          .where('id_usuario', isEqualTo: uid)
-          .get();
+    for (final idGuardiao in guardioesIds) {
+      try {
+        final guardiaoDoc = await FirebaseFirestore.instance
+            .collection('usuario')
+            .doc(idGuardiao)
+            .get();
 
-      if (guardioesSnapshot.docs.isEmpty) {
-        debugPrint("Nenhum guardião aceito encontrado para SOS.");
-        return;
-      }
-
-      for (final doc in guardioesSnapshot.docs) {
-        final idGuardiao = doc['id_guardiao'];
-
-        try {
-          final guardiaoDoc = await FirebaseFirestore.instance
-              .collection('usuario')
-              .doc(idGuardiao)
-              .get();
-
-          if (!guardiaoDoc.exists || guardiaoDoc.data() == null) {
-            debugPrint("Guardião $idGuardiao não encontrado ao enviar SOS.");
-            continue;
-          }
-
-          final data = guardiaoDoc.data() as Map<String, dynamic>;
-          final phoneRaw = (data['numerotelefone'] ?? '').toString().trim();
-
-          if (phoneRaw.isEmpty) {
-            debugPrint(
-              "Número de telefone não encontrado para o guardião: $idGuardiao",
-            );
-            continue;
-          }
-
-          await _sendSmsToGuardian(mensagem, phoneRaw);
-        } catch (e) {
-          debugPrint("Erro ao processar guardião $idGuardiao no SOS: $e");
+        if (!guardiaoDoc.exists || guardiaoDoc.data() == null) {
+          debugPrint("Guardião $idGuardiao não encontrado ao enviar SOS.");
+          continue;
         }
+
+        final data = guardiaoDoc.data() as Map<String, dynamic>;
+        final phoneRaw = (data['numerotelefone'] ?? '').toString().trim();
+
+        if (phoneRaw.isEmpty) {
+          debugPrint(
+            "Número de telefone não encontrado para o guardião: $idGuardiao",
+          );
+          continue;
+        }
+
+        await _sendSmsToGuardian(mensagem, phoneRaw);
+      } catch (e) {
+        debugPrint("Erro ao processar guardião $idGuardiao no SOS: $e");
       }
-    } catch (e) {
-      debugPrint("Erro geral ao enviar SMS de SOS: $e");
     }
   }
 
@@ -226,27 +242,41 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
           debugPrint('Erro ao buscar nome do usuário para SOS: $e');
         }
 
-        // 3) Abrir ocorrência SOS no Firestore
-        final id = await _fs.abrirSosComGuardioes(
-          ownerUid: uid,
-          textoSocorro:
-              'Atenção! Estou sob ameaça! Preciso de ajuda imediatamente.',
+        // 3) Buscar IDs dos guardiões aceitos/ativos
+        final guardioesIds = await _buscarGuardioesAceitosEAtivos(uid);
+
+        // 4) Abrir ocorrência SOS no Firestore usando o MESMO addOcorrencia
+        final agora = DateTime.now();
+        final id = await _fs.addOcorrencia(
+          'SOS',
+          'Gravíssima',
+          'SOS acionado pelo usuário',
+          'Atenção! Estou sob ameaça! Preciso de ajuda imediatamente.',
+          true, // enviarParaGuardiao (flag de controle, se você usar em outro lugar)
+          anexosLocais: const [],
           latitude: pos.latitude,
           longitude: pos.longitude,
+          idGuardiao: guardioesIds,
+          ownerUid: uid,
+          isSos: true,
+          dataHoraAbertura: agora,
         );
         _ocorrenciaId = id;
 
-        // 4) Montar mensagem de SMS para SOS
+        // 5) Montar mensagem de SMS para SOS
         const gravidadeSos = 'Gravissima';
         final smsMessage =
             'ALERTA DE SOS!\n'
             'Usuário: $nomeUsuario\n'
             'Gravidade: $gravidadeSos';
 
-        // 5) Enviar SMS de SOS para todos guardiões aceitos
-        await _enviarSmsSosParaGuardioes(smsMessage);
+        // 6) Enviar SMS de SOS para guardiões
+        await _enviarSmsSosParaGuardioes(
+          mensagem: smsMessage,
+          guardioesIds: guardioesIds,
+        );
 
-        // 6) Mídia + rastreamento
+        // 7) Mídia + rastreamento
         _media ??= await _obterMediaRecorder();
 
         await _tracker.start();
