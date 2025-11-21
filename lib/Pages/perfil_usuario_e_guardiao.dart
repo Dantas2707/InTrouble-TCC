@@ -515,27 +515,53 @@ class _GuardioesTabState extends State<_GuardioesTab> {
   }
 
   Future<Map<String, String>> _tplConvite() async {
-    final snap = await FirebaseFirestore.instance
-        .collection('textosEmails')
-        .doc('convidar guardiāo')
-        .get();
+  final col = FirebaseFirestore.instance.collection('textosEmails');
 
-    if (!snap.exists) {
-      return {
-        'assunto': 'Convite para ser Guardião',
-        'body': 'Olá {nomeGuardiao}, {nome} convidou você para ser guardião.',
-        'htmlBody':
-            '<p>Olá {nomeGuardiao}, <b>{nome}</b> convidou você para ser guardião.</p>',
-      };
-    }
+  // SEM o filtro 'inativar' por enquanto
+  final query = await col
+      .where('nome', isEqualTo: 'convidar guardião')
+      .get();
 
-    final data = (snap.data() ?? {}) as Map<String, dynamic>;
+  if (query.docs.isEmpty) {
     return {
-      'assunto': (data['assunto'] ?? 'Convite para ser Guardião').toString(),
-      'body': (data['body'] ?? data['texto'] ?? '').toString(),
-      'htmlBody': (data['html'] ?? '').toString(),
+      'assunto': 'Convite para ser Guardião',
+      'body': 'Olá {nomeGuardiao}, {nome} convidou você para ser guardião.',
+      'htmlBody':
+          '<p>Olá {nomeGuardiao}, <b>{nome}</b> convidou você para ser guardião.</p>',
     };
   }
+
+  // Filtra inativar no CLIENTE, só pra evitar qualquer detalhe de tipo
+  final ativos = query.docs.where((d) {
+    final data = d.data();
+    return (data['inativar'] == false);
+  }).toList();
+
+  if (ativos.isEmpty) {
+    return {
+      'assunto': 'Convite para ser Guardião',
+      'body': 'Olá {nomeGuardiao}, {nome} convidou você para ser guardião.',
+      'htmlBody':
+          '<p>Olá {nomeGuardiao}, <b>{nome}</b> convidou você para ser guardião.</p>',
+    };
+  }
+
+  final data = ativos.first.data();
+  final textoEmail = (data['textoEmail'] ?? '').toString().trim();
+  final assunto =
+      (data['assunto'] ?? 'Convite para ser Guardião').toString();
+
+  const bodyFallback =
+      'Olá {nomeGuardiao}, {nome} convidou você para ser guardião.';
+
+  return {
+    'assunto': assunto,
+    'body': bodyFallback,
+    'htmlBody': textoEmail.isNotEmpty ? textoEmail : '<p>$bodyFallback</p>',
+  };
+}
+
+
 
   Future<void> _enviarConvite() async {
     final email = _emailCtrl.text.trim();
