@@ -39,6 +39,8 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 coverage/
+functions/.env
+
 
 # Qualquer pasta build em qualquer nível
 build/

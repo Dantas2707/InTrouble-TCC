@@ -2,12 +2,11 @@
 import 'dart:io';
 import 'package:crud/services/firestore.dart';
 import 'package:crud/services/local_media.dart';
+import 'package:crud/services/sms_service.dart'; // ✅ novo import
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_background_messenger/flutter_background_messenger.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 
 class OcorrenciaPage extends StatefulWidget {
@@ -50,9 +49,6 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
   bool _isPicking = false;
   bool _isSaving = false;
 
-  // ===== INSTÂNCIA DO MESSENGER PARA SMS EM BACKGROUND =====
-  final FlutterBackgroundMessenger _messenger = FlutterBackgroundMessenger();
-
   @override
   void dispose() {
     _relatoCtrl.dispose();
@@ -70,13 +66,13 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
       ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: _colF2C4CD),
+      enabledBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(16)),
+        borderSide: BorderSide(color: _colF2C4CD),
       ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: _colD9B4BB, width: 1.6),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(16)),
+        borderSide: BorderSide(color: _colD9B4BB, width: 1.6),
       ),
     );
   }
@@ -204,49 +200,50 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
   }
 
   // =========================================================
-  //              HELPERS DE SMS (EXTRAÍDOS)
+  //      HELPER: CAPTURAR LOCALIZAÇÃO UMA ÚNICA VEZ
   // =========================================================
 
-  /// Pede permissão para enviar SMS.
-  Future<bool> _requestSmsPermission() async {
-    final status = await Permission.sms.request();
-    return status.isGranted;
-  }
+  Future<Position?> _obterLocalizacaoAtual() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      debugPrint('Serviço de localização desativado.');
+      return null;
+    }
 
-  /// Envia um SMS para um único guardião.
-  Future<void> _sendSmsToGuardian(String message, String phoneNumber) async {
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        debugPrint('Permissão de localização negada pelo usuário.');
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      debugPrint('Permissão de localização negada permanentemente.');
+      return null;
+    }
+
     try {
-      final bool success = await _messenger.sendSMS(
-        phoneNumber: phoneNumber,
-        message: message,
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
       );
-      if (success) {
-        debugPrint("SMS enviado para $phoneNumber");
-      } else {
-        debugPrint("Falha ao enviar SMS para $phoneNumber");
-      }
+      return pos;
     } catch (e) {
-      debugPrint("Erro ao enviar SMS para $phoneNumber: $e");
+      debugPrint('Erro ao obter localização: $e');
+      return null;
     }
   }
 
-  /// Envia SMS **apenas** para os guardiões selecionados em `_guardioesSelecionados`.
-  Future<void> _enviarSmsParaGuardioesSelecionados(String mensagem) async {
-    if (_guardioesSelecionados.isEmpty) {
-      // Nada selecionado, não faz sentido tentar enviar
-      return;
-    }
+  // =========================================================
+  //      HELPER: BUSCAR TELEFONES DOS GUARDIÕES SELECIONADOS
+  // =========================================================
 
-    // Pede permissão
-    final granted = await _requestSmsPermission();
-    if (!granted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Permissão para enviar SMS não concedida.')),
-        );
-      }
-      return;
-    }
+  Future<List<String>> _obterTelefonesGuardioesSelecionados() async {
+    if (_guardioesSelecionados.isEmpty) return [];
+
+    final List<String> telefones = [];
 
     for (final idGuardiao in _guardioesSelecionados) {
       try {
@@ -270,53 +267,13 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
           continue;
         }
 
-        await _sendSmsToGuardian(mensagem, phoneRaw);
+        telefones.add(phoneRaw);
       } catch (e) {
         debugPrint("Erro ao processar guardião $idGuardiao: $e");
       }
     }
-  }
 
-  // =========================================================
-  //      HELPER: CAPTURAR LOCALIZAÇÃO UMA ÚNICA VEZ
-  // =========================================================
-
-  /// Captura a localização atual UMA ÚNICA VEZ.
-  /// Retorna null se o serviço ou a permissão não estiverem disponíveis.
-  Future<Position?> _obterLocalizacaoAtual() async {
-    // Verifica se o serviço de localização está ativo
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      debugPrint('Serviço de localização desativado.');
-      return null;
-    }
-
-    // Verifica/pergunta a permissão
-    LocationPermission permission = await Geolocator.checkPermission();
-
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        debugPrint('Permissão de localização negada pelo usuário.');
-        return null;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      debugPrint('Permissão de localização negada permanentemente.');
-      return null;
-    }
-
-    try {
-      // Pega a posição uma vez só
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-      return pos;
-    } catch (e) {
-      debugPrint('Erro ao obter localização: $e');
-      return null;
-    }
+    return telefones;
   }
 
   // ------------ Registrar ocorrência ------------
@@ -385,16 +342,6 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       final double? longitude = posicao?.longitude;
 
       // ================================
-      // Montar corpo do SMS
-      // ================================
-      final String smsMessage =
-          'Alerta de ocorrência!\n'
-          'Usuário: $nomeUsuario\n'
-          'Tipo: $_tipoSelecionado\n'
-          'Gravidade: $_gravidadeSelecionada\n'
-          'Mensagem: $textoSocorro';
-
-      // ================================
       // Salva a ocorrência no Firestore
       // (ocorrência NORMAL → isSos: false)
       // ================================
@@ -408,21 +355,42 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
         idGuardiao:
             _guardioesSelecionados.isEmpty ? [] : _guardioesSelecionados,
         ownerUid: user.uid,
-        // NOVOS CAMPOS (ajustar FirestoreService para aceitar)
-        isSos: false,                 // ocorrência normal
-        latitudeInicial: latitude,    // capturada uma vez
-        longitudeInicial: longitude,  // capturada uma vez
-        dataHoraAbertura: agora,      // capturada uma vez
+        // NOVOS CAMPOS
+        isSos: false,
+        latitudeInicial: latitude,
+        longitudeInicial: longitude,
+        dataHoraAbertura: agora,
       );
 
-      // Envia SMS SOMENTE para os guardiões selecionados
+      // ================================
+      // Enviar SMS via SmsService (Ocorrência criada)
+      // ================================
       if (_guardioesSelecionados.isNotEmpty) {
-        await _enviarSmsParaGuardioesSelecionados(smsMessage);
+        final telefonesGuardioes =
+            await _obterTelefonesGuardioesSelecionados();
+
+        if (telefonesGuardioes.isNotEmpty) {
+          final tipoComGravidade = _gravidadeSelecionada != null &&
+                  _gravidadeSelecionada!.isNotEmpty
+              ? '$_tipoSelecionado (Gravidade: $_gravidadeSelecionada)'
+              : _tipoSelecionado!;
+
+          await SmsService.instance.smsOcorrenciaCriada(
+            telefonesGuardioes: telefonesGuardioes,
+            nomeVitima: nomeUsuario,
+            tipoOcorrencia: tipoComGravidade,
+          );
+        } else {
+          debugPrint(
+            '[SMS] Nenhum telefone válido encontrado para os guardiões selecionados.',
+          );
+        }
       }
 
+      // Reset dos campos
       _relatoCtrl.clear();
       _textoSocorroCtrl.text =
-          'Atenção! Estou sob ameaça! Preciso de ajuda!';
+          'Uma ocorrência está em aberto. Preciso de ajuda!'; // mantém padrão desta tela
       setState(() {
         _tipoSelecionado = null;
         _gravidadeSelecionada = null;
@@ -512,7 +480,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                           }
                         });
                       },
-                      activeColor: _colF2C4CD, // Cor da checkbox
+                      activeColor: _colF2C4CD,
                     );
                   },
                 ),
@@ -544,7 +512,6 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                     TextButton(
                       onPressed: () {
                         Navigator.of(context).pop();
-                        // Atualiza a tela principal também
                         setState(() {});
                       },
                       child: const Text(
@@ -639,14 +606,12 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Tipo de ocorrência
                     _sectionTitle('Informações da ocorrência'),
                     const SizedBox(height: 8),
                     StreamBuilder<QuerySnapshot>(
                       stream: _service.getTipoOcorrenciaStream(),
                       builder: (ctx, snap) {
-                        if (snap.connectionState ==
-                            ConnectionState.waiting) {
+                        if (snap.connectionState == ConnectionState.waiting) {
                           return const Center(
                             child: CircularProgressIndicator(),
                           );

@@ -6,10 +6,6 @@ import 'package:crud/services/firestore.dart';
 import 'package:crud/services/sos_location_tracker.dart';
 import 'package:crud/services/sos_media_recorder.dart';
 
-// ==== NOVOS IMPORTS PARA SMS ====
-import 'package:flutter_background_messenger/flutter_background_messenger.dart';
-import 'package:permission_handler/permission_handler.dart';
-
 // ===================== PALETA =====================
 const kRosaMuitoClaro = Color(0xFFF2DFE0); // #F2DFE0
 const kRosaClaro      = Color(0xFFF2C4CD); // #F2C4CD
@@ -36,9 +32,6 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
 
   /// ID da ocorrência SOS aberta (para vincular upload e finalizar)
   String? _ocorrenciaId;
-
-  // ==== INSTÂNCIA DO MESSENGER PARA SMS EM BACKGROUND ====
-  final FlutterBackgroundMessenger _messenger = FlutterBackgroundMessenger();
 
   @override
   void initState() {
@@ -82,31 +75,8 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
   }
 
   // =========================================================
-  //              HELPERS DE SMS / GUARDIÕES
+  //              HELPERS DE GUARDIÕES
   // =========================================================
-
-  /// Pede permissão para enviar SMS.
-  Future<bool> _requestSmsPermission() async {
-    final status = await Permission.sms.request();
-    return status.isGranted;
-  }
-
-  /// Envia um SMS para um único guardião.
-  Future<void> _sendSmsToGuardian(String message, String phoneNumber) async {
-    try {
-      final bool success = await _messenger.sendSMS(
-        phoneNumber: phoneNumber,
-        message: message,
-      );
-      if (success) {
-        debugPrint("SMS SOS enviado para $phoneNumber");
-      } else {
-        debugPrint("Falha ao enviar SMS SOS para $phoneNumber");
-      }
-    } catch (e) {
-      debugPrint("Erro ao enviar SMS SOS para $phoneNumber: $e");
-    }
-  }
 
   /// Busca IDs dos guardiões do usuário com status 'aceito' ou 'ativo'.
   Future<List<String>> _buscarGuardioesAceitosEAtivos(String uid) async {
@@ -137,57 +107,7 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     return idsSet.toList();
   }
 
-  /// Envia SMS de SOS para a lista de guardiões informada.
-  Future<void> _enviarSmsSosParaGuardioes({
-    required String mensagem,
-    required List<String> guardioesIds,
-  }) async {
-    if (guardioesIds.isEmpty) {
-      debugPrint("Nenhum guardião para envio de SMS SOS.");
-      return;
-    }
-
-    // Pede permissão de SMS
-    final granted = await _requestSmsPermission();
-    if (!granted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Permissão para enviar SMS não concedida.'),
-          ),
-        );
-      }
-      return;
-    }
-
-    for (final idGuardiao in guardioesIds) {
-      try {
-        final guardiaoDoc = await FirebaseFirestore.instance
-            .collection('usuario')
-            .doc(idGuardiao)
-            .get();
-
-        if (!guardiaoDoc.exists || guardiaoDoc.data() == null) {
-          debugPrint("Guardião $idGuardiao não encontrado ao enviar SOS.");
-          continue;
-        }
-
-        final data = guardiaoDoc.data() as Map<String, dynamic>;
-        final phoneRaw = (data['numerotelefone'] ?? '').toString().trim();
-
-        if (phoneRaw.isEmpty) {
-          debugPrint(
-            "Número de telefone não encontrado para o guardião: $idGuardiao",
-          );
-          continue;
-        }
-
-        await _sendSmsToGuardian(mensagem, phoneRaw);
-      } catch (e) {
-        debugPrint("Erro ao processar guardião $idGuardiao no SOS: $e");
-      }
-    }
-  }
+  // =========================================================
 
   Future<void> _onToggleSOS() async {
     setState(() => _loading = true);
@@ -209,6 +129,7 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
             await _media?.stop();
           }
 
+          // Atualiza status para "finalizado" (Cloud Function onSosFinalizado cuida do SMS)
           await _fs.finalizarOcorrencia(_ocorrenciaId!);
         } else {
           await _media?.stop();
@@ -222,12 +143,12 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
       } else {
         // === ACIONAR SOS ===
 
-        // 1) Posição atual
+        // 1) Posição atual (pode pedir permissão de localização)
         final pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
         );
 
-        // 2) Buscar nome do usuário para usar no SMS
+        // 2) Buscar nome do usuário (só para salvar/telemetria, SMS é backend)
         String nomeUsuario = 'Usuário';
         try {
           final userDoc = await FirebaseFirestore.instance
@@ -246,47 +167,35 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
         final guardioesIds = await _buscarGuardioesAceitosEAtivos(uid);
 
         // 4) Abrir ocorrência SOS no Firestore usando o MESMO addOcorrencia
+        //    Cloud Function onSosCreated vai enxergar esse doc e disparar os SMS
         final agora = DateTime.now();
         final id = await _fs.addOcorrencia(
           'SOS',
           'Gravíssima',
-          'SOS acionado pelo usuário',
+          'SOS acionado pelo usuário $nomeUsuario',
           'Atenção! Estou sob ameaça! Preciso de ajuda imediatamente.',
-          true, // enviarParaGuardiao (flag de controle, se você usar em outro lugar)
+          true, // enviarParaGuardiao (se você usa essa flag em outro lugar)
           anexosLocais: const [],
-          latitude: pos.latitude,
-          longitude: pos.longitude,
           idGuardiao: guardioesIds,
           ownerUid: uid,
           isSos: true,
+          latitudeInicial: pos.latitude,
+          longitudeInicial: pos.longitude,
           dataHoraAbertura: agora,
         );
         _ocorrenciaId = id;
 
-        // 5) Montar mensagem de SMS para SOS
-        const gravidadeSos = 'Gravissima';
-        final smsMessage =
-            'ALERTA DE SOS!\n'
-            'Usuário: $nomeUsuario\n'
-            'Gravidade: $gravidadeSos';
-
-        // 6) Enviar SMS de SOS para guardiões
-        await _enviarSmsSosParaGuardioes(
-          mensagem: smsMessage,
-          guardioesIds: guardioesIds,
-        );
-
-        // 7) Mídia + rastreamento
+        // 5) Mídia + rastreamento locais (apenas para evidências)
         _media ??= await _obterMediaRecorder();
-
         await _tracker.start();
         await _media!.start();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content:
-                  Text('SOS acionado. Capturando mídia e localização...'),
+              content: Text(
+                'SOS acionado. Capturando mídia e localização...',
+              ),
             ),
           );
         }

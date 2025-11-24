@@ -111,21 +111,16 @@ class _HomePageState extends State<HomePage> {
       _carregandoRelacoes = false;
     });
 
-    // Agora, vamos escutar em tempo real qualquer mudança nas coleções
+    // Escutas em tempo real
     _fs.guardioes
         .where('id_usuario', isEqualTo: _uid)
         .where('status', isEqualTo: 'aceito')
         .snapshots()
-        .listen((event) {
-      _verificarStatusGuardiao();
-    });
+        .listen((_) => _verificarStatusGuardiao());
 
-    _fs.usuario.doc(_uid).snapshots().listen((doc) {
-      _verificarStatusGuardiao();
-    });
+    _fs.usuario.doc(_uid).snapshots().listen((_) => _verificarStatusGuardiao());
   }
 
-  // Método que verifica e atualiza o status do usuário em tempo real
   Future<void> _verificarStatusGuardiao() async {
     final docUsuario = await _fs.usuario.doc(_uid).get();
     final data = docUsuario.data() as Map<String, dynamic>?;
@@ -157,7 +152,6 @@ class _HomePageState extends State<HomePage> {
     await _requestAllLocationPermissions();
   }
 
-  /// Diálogo genérico com estilinho InTrouble
   Future<void> _showLocationDialog({
     required String title,
     required String message,
@@ -212,7 +206,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Diálogo específico pro GPS desligado, com ícone e rosa
   Future<bool> _showGpsDialogInTroubleStyle() async {
     if (!mounted) return false;
 
@@ -267,10 +260,7 @@ class _HomePageState extends State<HomePage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onPressed: () {
-                // Usuário diz que já ligou o GPS
-                Navigator.of(ctx).pop(true);
-              },
+              onPressed: () => Navigator.of(ctx).pop(true),
               child: const Text('Já ativei'),
             ),
           ],
@@ -283,26 +273,15 @@ class _HomePageState extends State<HomePage> {
 
   Future<bool> _requestAllLocationPermissions() async {
     try {
-      // 1) GPS ligado?
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        // Mostra o diálogo estilizado
         final confirmou = await _showGpsDialogInTroubleStyle();
+        if (!confirmou) return false;
 
-        if (!confirmou) {
-          // Usuário clicou "Agora não"
-          return false;
-        }
-
-        // Usuário disse que já ativou → conferimos de novo
         serviceEnabled = await Geolocator.isLocationServiceEnabled();
-        if (!serviceEnabled) {
-          // Ainda desligado → não fica insistindo
-          return false;
-        }
+        if (!serviceEnabled) return false;
       }
 
-      // 2) Permissão de localização em primeiro plano
       var locStatus = await ph.Permission.location.status;
       if (!locStatus.isGranted) {
         locStatus = await ph.Permission.location.request();
@@ -329,14 +308,12 @@ class _HomePageState extends State<HomePage> {
         return false;
       }
 
-      // 3) Localização em 2º plano (opcional, mas recomendada)
       var alwaysStatus = await ph.Permission.locationAlways.status;
       if (!alwaysStatus.isGranted) {
         alwaysStatus = await ph.Permission.locationAlways.request();
       }
 
       if (alwaysStatus.isDenied) {
-        // Não bloqueia o app, só avisa que o rastreio contínuo pode falhar
         await _showLocationDialog(
           title: 'Rastreamento limitado',
           message:
@@ -354,7 +331,6 @@ class _HomePageState extends State<HomePage> {
               'ative a localização em segundo plano nas configurações do aplicativo.',
           showSettingsButton: true,
         );
-        // Se quiser que o app continue mesmo assim, troque para `return true;`
         return false;
       }
 
@@ -404,9 +380,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Header bonitinho com gradiente rosa
   Widget _buildHeader(User? user) {
-    // Prioridade: nome do Firestore -> displayName -> parte do e-mail
     String nome = _nomeUsuario;
 
     if (nome.isEmpty && user != null) {
@@ -463,7 +437,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Botão estilizado padrão da Home
   Widget _buildActionButton({
     required IconData icon,
     required String label,
@@ -556,7 +529,6 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
 
-              // Card principal de ações
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
@@ -637,7 +609,6 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Vítima
                     _buildActionButton(
                       icon: Icons.flag_outlined,
                       label: 'Registrar ocorrência',
@@ -665,7 +636,6 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Guardião (eu guardo alguém)
                     if (_guardoAlguem) ...[
                       const Text(
                         'Como guardião',
@@ -707,7 +677,6 @@ class _HomePageState extends State<HomePage> {
                       const SizedBox(height: 20),
                     ],
 
-                    // SOS -> só aparece se eu tiver pelo menos um guardião
                     if (_temGuardiao) ...[
                       const Text(
                         'Emergência',

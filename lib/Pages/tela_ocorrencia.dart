@@ -9,10 +9,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
-
-// ==== NOVOS IMPORTS PARA SMS ====
-import 'package:flutter_background_messenger/flutter_background_messenger.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:crud/services/sms_service.dart'; // ✅ usando o service novo
 
 class OcorrenciasPage extends StatefulWidget {
   const OcorrenciasPage({super.key});
@@ -33,9 +30,6 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
   static const Color _colD9B4BB = Color(0xFFD9B4BB);
   static const Color _colF2C4C4 = Color(0xFFF2C4C4);
   static const Color _colF2F2F2 = Color(0xFFF2F2F2);
-
-  // ==== INSTÂNCIA DO MESSENGER PARA SMS ====
-  final FlutterBackgroundMessenger _messenger = FlutterBackgroundMessenger();
 
   @override
   void initState() {
@@ -199,52 +193,33 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
       }
     }
   }
-  // ============================================
 
   // =========================================================
   //              HELPERS DE SMS (EDIÇÃO / FINALIZAÇÃO)
   // =========================================================
 
-  Future<bool> _requestSmsPermission() async {
-    final status = await Permission.sms.request();
-    return status.isGranted;
-  }
-
-  Future<void> _sendSmsToGuardian(String message, String phoneNumber) async {
+  /// Busca o nome do usuário dono das ocorrências (vítima).
+  Future<String> _obterNomeUsuario() async {
+    String nome = 'Usuário';
     try {
-      final success = await _messenger.sendSMS(
-        phoneNumber: phoneNumber,
-        message: message,
-      );
-      if (!success) {
-        debugPrint('Falha ao enviar SMS para $phoneNumber');
+      final doc = await FirebaseFirestore.instance
+          .collection('usuario')
+          .doc(_uid)
+          .get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data() as Map<String, dynamic>;
+        nome = (data['nome'] ?? nome).toString();
       }
     } catch (e) {
-      debugPrint('Erro ao enviar SMS para $phoneNumber: $e');
+      debugPrint('Erro ao obter nome do usuário: $e');
     }
+    return nome;
   }
 
-  /// Envia SMS para os guardiões ligados a uma ocorrência (lista de IDs já salva no doc).
-  Future<void> _enviarSmsParaGuardioesOcorrencia({
-    required List<dynamic> idsGuardioes,
-    required String mensagem,
-  }) async {
-    if (idsGuardioes.isEmpty) {
-      debugPrint('Ocorrência sem guardiões vinculados, não enviando SMS.');
-      return;
-    }
-
-    final granted = await _requestSmsPermission();
-    if (!granted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Permissão para enviar SMS não concedida.'),
-          ),
-        );
-      }
-      return;
-    }
+  /// Busca os telefones dos guardiões a partir da lista de IDs
+  Future<List<String>> _obterTelefonesGuardioes(
+      List<dynamic> idsGuardioes) async {
+    final List<String> telefones = [];
 
     for (final gId in idsGuardioes) {
       if (gId == null) continue;
@@ -264,29 +239,69 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
           continue;
         }
 
-        await _sendSmsToGuardian(mensagem, phone);
+        telefones.add(phone);
       } catch (e) {
         debugPrint('Erro ao processar guardião $gId: $e');
       }
     }
+
+    return telefones;
   }
 
-  /// Busca o nome do usuário dono das ocorrências (vítima).
-  Future<String> _obterNomeUsuario() async {
-    String nome = 'Usuário';
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('usuario')
-          .doc(_uid)
-          .get();
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data() as Map<String, dynamic>;
-        nome = (data['nome'] ?? nome).toString();
-      }
-    } catch (e) {
-      debugPrint('Erro ao obter nome do usuário: $e');
+  /// Notifica guardiões que a ocorrência foi ATUALIZADA (edição)
+  Future<void> _enviarSmsAtualizacaoOcorrencia({
+    required List<dynamic> idsGuardioes,
+    required String nomeUsuario,
+    required String tipo,
+    required String gravidade,
+  }) async {
+    if (idsGuardioes.isEmpty) {
+      debugPrint('Ocorrência sem guardiões vinculados (edição), não enviando SMS.');
+      return;
     }
-    return nome;
+
+    final telefones = await _obterTelefonesGuardioes(idsGuardioes);
+    if (telefones.isEmpty) {
+      debugPrint('Nenhum telefone de guardião encontrado para edição.');
+      return;
+    }
+
+    final tipoComGravidade =
+        gravidade.isNotEmpty ? '$tipo (Gravidade: $gravidade)' : tipo;
+
+    await SmsService.instance.smsOcorrenciaEditada(
+      telefonesGuardioes: telefones,
+      nomeVitima: nomeUsuario,
+      tipoOcorrencia: tipoComGravidade,
+    );
+  }
+
+  /// Notifica guardiões que a ocorrência foi FINALIZADA
+  Future<void> _enviarSmsFinalizacaoOcorrencia({
+    required List<dynamic> idsGuardioes,
+    required String nomeUsuario,
+    required String tipo,
+    required String gravidade,
+  }) async {
+    if (idsGuardioes.isEmpty) {
+      debugPrint('Ocorrência sem guardiões vinculados (finalização), não enviando SMS.');
+      return;
+    }
+
+    final telefones = await _obterTelefonesGuardioes(idsGuardioes);
+    if (telefones.isEmpty) {
+      debugPrint('Nenhum telefone de guardião encontrado para finalização.');
+      return;
+    }
+
+    final tipoComGravidade =
+        gravidade.isNotEmpty ? '$tipo (Gravidade: $gravidade)' : tipo;
+
+    await SmsService.instance.smsOcorrenciaFinalizada(
+      telefonesGuardioes: telefones,
+      nomeVitima: nomeUsuario,
+      tipoOcorrencia: tipoComGravidade,
+    );
   }
 
   // =========================================================
@@ -700,15 +715,11 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
                           // Enviar SMS avisando finalização (best-effort)
                           try {
                             final nomeUsuario = await _obterNomeUsuario();
-                            final msg =
-                                'OCORRÊNCIA FINALIZADA\n'
-                                'Usuário: $nomeUsuario\n'
-                                'Tipo: $tipo\n'
-                                'Gravidade: $gravidade';
-
-                            await _enviarSmsParaGuardioesOcorrencia(
+                            await _enviarSmsFinalizacaoOcorrencia(
                               idsGuardioes: idsGuardioes,
-                              mensagem: msg,
+                              nomeUsuario: nomeUsuario,
+                              tipo: tipo,
+                              gravidade: gravidade,
                             );
                           } catch (e) {
                             debugPrint(
@@ -745,227 +756,222 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
   }
 
   // -------- Editor (LOCAL + STORAGE) --------
-  // -------- Editor (LOCAL + STORAGE) --------
-Future<void> _abrirEditorOcorrenciaLocal(
-  BuildContext context, {
-  required String docId,
-  required String relatoAtual,
-  required Map<String, dynamic> data,
-}) async {
-  final controller = TextEditingController(text: relatoAtual);
-  List<PlatformFile> selecionados = [];
+  Future<void> _abrirEditorOcorrenciaLocal(
+    BuildContext context, {
+    required String docId,
+    required String relatoAtual,
+    required Map<String, dynamic> data,
+  }) async {
+    final controller = TextEditingController(text: relatoAtual);
+    List<PlatformFile> selecionados = [];
 
-  // Dados para SMS
-  final tipo = (data['tipoOcorrencia'] as String?) ?? '';
-  final gravidade = (data['gravidade'] as String?) ?? '';
-  final idsGuardioes =
-      (data['id_guardiao'] as List?)?.toList() ?? <dynamic>[];
+    // Dados para SMS
+    final tipo = (data['tipoOcorrencia'] as String?) ?? '';
+    final gravidade = (data['gravidade'] as String?) ?? '';
+    final idsGuardioes =
+        (data['id_guardiao'] as List?)?.toList() ?? <dynamic>[];
 
-  await showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-    ),
-    builder: (ctx) {
-      return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-          top: 16,
-          left: 16,
-          right: 16,
-        ),
-        child: StatefulBuilder(
-          builder: (ctx, setModalState) {
-            final String textoAtual = controller.text.trim();
-            final bool relatoMudou = textoAtual != relatoAtual.trim();
-            final bool anexosAdicionados = selecionados.isNotEmpty;
-            final bool houveAlteracao = relatoMudou || anexosAdicionados;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            top: 16,
+            left: 16,
+            right: 16,
+          ),
+          child: StatefulBuilder(
+            builder: (ctx, setModalState) {
+              final String textoAtual = controller.text.trim();
+              final bool relatoMudou = textoAtual != relatoAtual.trim();
+              final bool anexosAdicionados = selecionados.isNotEmpty;
+              final bool houveAlteracao = relatoMudou || anexosAdicionados;
 
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Editar ocorrência',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-
-                TextField(
-                  controller: controller,
-                  maxLines: null,
-                  decoration: const InputDecoration(
-                    labelText: 'Relato',
-                    border: OutlineInputBorder(),
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Editar ocorrência',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  onChanged: (_) => setModalState(() {}),
-                ),
+                  const SizedBox(height: 12),
 
-                const SizedBox(height: 6),
-                if (!houveAlteracao)
-                  Row(
-                    children: [
-                      const Icon(Icons.info_outline,
-                          size: 16, color: Colors.grey),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          'Nenhuma alteração detectada',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 13,
+                  TextField(
+                    controller: controller,
+                    maxLines: null,
+                    decoration: const InputDecoration(
+                      labelText: 'Relato',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => setModalState(() {}),
+                  ),
+
+                  const SizedBox(height: 6),
+                  if (!houveAlteracao)
+                    Row(
+                      children: [
+                        const Icon(Icons.info_outline,
+                            size: 16, color: Colors.grey),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            'Nenhuma alteração detectada',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
+                      ],
+                    ),
+
+                  const SizedBox(height: 12),
+
+                  Row(
+                    children: [
+                      ElevatedButton(
+                        onPressed: () async {
+                          final res = await FilePicker.platform.pickFiles(
+                            allowMultiple: true,
+                            type: FileType.any,
+                            withData: true,
+                            withReadStream: true,
+                          );
+                          if (res != null && res.files.isNotEmpty) {
+                            setModalState(() => selecionados.addAll(res.files));
+                          }
+                        },
+                        child: const Text('Adicionar anexos'),
                       ),
+                      const SizedBox(width: 12),
+                      Text('Selecionados: ${selecionados.length}'),
                     ],
                   ),
 
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
 
-                Row(
-                  children: [
-                    ElevatedButton(
-                      onPressed: () async {
-                        final res = await FilePicker.platform.pickFiles(
-                          allowMultiple: true,
-                          type: FileType.any,
-                          withData: true,
-                          withReadStream: true,
-                        );
-                        if (res != null && res.files.isNotEmpty) {
-                          setModalState(() => selecionados.addAll(res.files));
-                        }
-                      },
-                      child: const Text('Adicionar anexos'),
-                    ),
-                    const SizedBox(width: 12),
-                    Text('Selecionados: ${selecionados.length}'),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () async {
-                        final texto = controller.text.trim();
-                        if (texto.isEmpty) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('O relato não pode ficar vazio'),
-                              ),
-                            );
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancelar'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () async {
+                          final texto = controller.text.trim();
+                          if (texto.isEmpty) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('O relato não pode ficar vazio'),
+                                ),
+                              );
+                            }
+                            return;
                           }
-                          return;
-                        }
-                        if (!houveAlteracao) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Nenhuma alteração detectada'),
-                              ),
-                            );
-                          }
-                          return;
-                        }
-
-                        Navigator.pop(ctx); // fecha o modal
-
-                        try {
-                          // 1) Salva LOCALMENTE os arquivos escolhidos
-                          final novosCaminhosLocais = <String>[];
-                          for (final f in selecionados) {
-                            final saved = await savePickedFileLocally(
-                              f,
-                              ocorrenciaId: docId,
-                            );
-                            novosCaminhosLocais.add(saved);
+                          if (!houveAlteracao) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Nenhuma alteração detectada'),
+                                ),
+                              );
+                            }
+                            return;
                           }
 
-                          // 2) Faz UPLOAD para o FIREBASE STORAGE em paralelo
-                          final uploadFutures =
-                              novosCaminhosLocais.map((localPath) async {
+                          Navigator.pop(ctx); // fecha o modal
+
+                          try {
+                            // 1) Salva LOCALMENTE os arquivos escolhidos
+                            final novosCaminhosLocais = <String>[];
+                            for (final f in selecionados) {
+                              final saved = await savePickedFileLocally(
+                                f,
+                                ocorrenciaId: docId,
+                              );
+                              novosCaminhosLocais.add(saved);
+                            }
+
+                            // 2) Faz UPLOAD para o FIREBASE STORAGE em paralelo
+                            final uploadFutures =
+                                novosCaminhosLocais.map((localPath) async {
+                              try {
+                                return await _uploadArquivoParaStorage(
+                                  pathLocal: localPath,
+                                  uid: _uid,
+                                  ocId: docId,
+                                );
+                              } catch (e) {
+                                debugPrint('Falha ao enviar $localPath: $e');
+                                return null;
+                              }
+                            }).toList();
+
+                            final novasUrlsCloud =
+                                (await Future.wait(uploadFutures))
+                                    .whereType<String>()
+                                    .toList();
+
+                            // 3) Atualiza no Firestore (relato + locais + cloud)
+                            await _service.editarOcorrenciaHibrido(
+                              docId,
+                              novoRelato: texto,
+                              caminhosNovosLocais: novosCaminhosLocais,
+                              urlsNovasCloud: novasUrlsCloud,
+                            );
+
+                            // 4) Envia SMS avisando que a ocorrência foi editada (best-effort)
                             try {
-                              return await _uploadArquivoParaStorage(
-                                pathLocal: localPath,
-                                uid: _uid,
-                                ocId: docId,
+                              final nomeUsuario = await _obterNomeUsuario();
+                              await _enviarSmsAtualizacaoOcorrencia(
+                                idsGuardioes: idsGuardioes,
+                                nomeUsuario: nomeUsuario,
+                                tipo: tipo,
+                                gravidade: gravidade,
                               );
                             } catch (e) {
-                              debugPrint('Falha ao enviar $localPath: $e');
-                              return null;
+                              debugPrint(
+                                  'Erro ao enviar SMS de atualização: $e');
                             }
-                          }).toList();
 
-                          final novasUrlsCloud =
-                              (await Future.wait(uploadFutures))
-                                  .whereType<String>()
-                                  .toList();
-
-                          // 3) Atualiza no Firestore (relato + locais + cloud)
-                          await _service.editarOcorrenciaHibrido(
-                            docId,
-                            novoRelato: texto,
-                            caminhosNovosLocais: novosCaminhosLocais,
-                            urlsNovasCloud: novasUrlsCloud,
-                          );
-
-                          // 4) Envia SMS avisando que a ocorrência foi editada (best-effort)
-                          try {
-                            final nomeUsuario = await _obterNomeUsuario();
-                            final msg = 'OCORRÊNCIA ATUALIZADA\n'
-                                'Usuário: $nomeUsuario\n'
-                                'Tipo: $tipo\n'
-                                'Gravidade: $gravidade';
-
-                            await _enviarSmsParaGuardioesOcorrencia(
-                              idsGuardioes: idsGuardioes,
-                              mensagem: msg,
-                            );
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Ocorrência atualizada'),
+                                ),
+                              );
+                            }
                           } catch (e) {
-                            debugPrint(
-                                'Erro ao enviar SMS de atualização: $e');
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Falha ao atualizar: $e'),
+                                ),
+                              );
+                            }
                           }
-
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Ocorrência atualizada'),
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Falha ao atualizar: $e'),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      child: const Text('Salvar'),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
-      );
-    },
-  );
-}
-
+                        },
+                        child: const Text('Salvar'),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
 
   // ------- Helpers -------
   static String _two(int n) => n.toString().padLeft(2, '0');
