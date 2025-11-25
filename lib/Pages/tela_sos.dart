@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:crud/services/firestore.dart';
 import 'package:crud/services/sos_location_tracker.dart';
 import 'package:crud/services/sos_media_recorder.dart';
+import 'package:crud/services/enviar_email.dart';
 
 // ===================== PALETA =====================
 const kRosaMuitoClaro = Color(0xFFF2DFE0); // #F2DFE0
@@ -23,7 +24,7 @@ class TelaVitimaSOS extends StatefulWidget {
 class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
   final FirestoreService _fs = FirestoreService();
   final _tracker = SosLocationTracker();
-
+  final _emailSvc = EmailBackendService();
   // Recorder é opcional e criado conforme config do ADM
   SosMediaRecorder? _media;
 
@@ -107,6 +108,233 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     return idsSet.toList();
   }
 
+  /// Busca e-mail e nome dos guardiões pelo id.
+   /// Busca e-mail e nome dos guardiões pelo id.
+  Future<List<Map<String, String>>> _buscarContatosGuardioes(
+      List<String> guardioesIds) async {
+    final contatos = <Map<String, String>>[];
+
+    for (final guardiaoId in guardioesIds) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('usuario')
+            .doc(guardiaoId)
+            .get();
+
+        if (!doc.exists || doc.data() == null) continue;
+
+        final data = doc.data() as Map<String, dynamic>;
+        final email = (data['email'] ?? '').toString().trim();
+        final nome = (data['nome'] ?? 'Guardião').toString();
+
+        if (email.isNotEmpty) {
+          contatos.add({'email': email, 'nome': nome});
+        }
+      } catch (e) {
+        debugPrint('Erro ao buscar guardião $guardiaoId: $e');
+      }
+    }
+
+    return contatos;
+  }
+
+  /// Busca o template de e-mail do SOS na coleção `textosEmails`.
+  Future<Map<String, String>> _tplSosGuardiao() async {
+    const assuntoFallback = '🚨 SOS acionado - InTrouble';
+    const bodyFallback =
+        'Olá {nomeGuardiao}, {nome} acionou o SOS no app InTrouble. Mensagem: {socorro}. Hora: {hora}.';
+    const htmlFallback =
+        '<p>Olá {nomeGuardiao},</p><p><b>{nome}</b> acionou o SOS no app InTrouble.</p><p><b>Mensagem:</b> {socorro}</p><p><b>Horário:</b> {hora}</p>';
+
+    try {
+      final col = FirebaseFirestore.instance.collection('textosEmails');
+      final query = await col.where('nome', isEqualTo: 'Pedido de socorro').get();
+
+      if (query.docs.isEmpty) {
+        return {
+          'assunto': assuntoFallback,
+          'body': bodyFallback,
+          'htmlBody': htmlFallback,
+        };
+      }
+
+      final ativos = query.docs.where((d) {
+        final data = d.data();
+        return (data['inativar'] == false);
+      }).toList();
+
+      if (ativos.isEmpty) {
+        return {
+          'assunto': assuntoFallback,
+          'body': bodyFallback,
+          'htmlBody': htmlFallback,
+        };
+      }
+
+      final data = ativos.first.data();
+      final textoEmail = (data['textoEmail'] ?? '').toString().trim();
+      final assunto = (data['assunto'] ?? assuntoFallback).toString();
+      final textoPlano = _textoSemHtml(textoEmail);
+      final bodyFromTemplate = textoEmail.isNotEmpty
+          ? (textoPlano.isNotEmpty ? textoPlano : textoEmail)
+          : bodyFallback;
+
+      return {
+        'assunto': assunto,
+        'body': bodyFromTemplate,
+        'htmlBody': textoEmail.isNotEmpty ? textoEmail : htmlFallback,
+      };
+    } catch (e) {
+      debugPrint('Erro ao buscar template de SOS: $e');
+      return {
+        'assunto': assuntoFallback,
+        'body': bodyFallback,
+        'htmlBody': htmlFallback,
+      };
+    }
+  }
+
+  /// Remove as tags HTML para montar um corpo de texto simples.
+  String _textoSemHtml(String html) {
+    final plain = html.replaceAll(RegExp(r'<[^>]*>'), '');
+    return plain.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  /// Busca o template de e-mail para finalização do SOS.
+  Future<Map<String, String>> _tplSosGuardiaoFinalizado() async {
+    const assuntoFallback = '✅ SOS finalizado - InTrouble';
+    const bodyFallback =
+        'Olá {nomeGuardiao}, {nome} finalizou o SOS no app InTrouble. Horário: {hora}.';
+    const htmlFallback =
+        '<p>Olá {nomeGuardiao},</p><p><b>{nome}</b> finalizou o SOS no app InTrouble.</p><p><b>Horário:</b> {hora}</p>';
+
+    try {
+      final col = FirebaseFirestore.instance.collection('textosEmails');
+      final query = await col.where('nome', isEqualTo: 'Pedido de socorro finalizado').get();
+
+      if (query.docs.isEmpty) {
+        return {
+          'assunto': assuntoFallback,
+          'body': bodyFallback,
+          'htmlBody': htmlFallback,
+        };
+      }
+
+      final ativos = query.docs.where((d) {
+        final data = d.data();
+        return (data['inativar'] == false);
+      }).toList();
+
+      if (ativos.isEmpty) {
+        return {
+          'assunto': assuntoFallback,
+          'body': bodyFallback,
+          'htmlBody': htmlFallback,
+        };
+      }
+
+      final data = ativos.first.data();
+      final textoEmail = (data['textoEmail'] ?? '').toString().trim();
+      final assunto = (data['assunto'] ?? assuntoFallback).toString();
+      final textoPlano = _textoSemHtml(textoEmail);
+      final bodyFromTemplate = textoEmail.isNotEmpty
+          ? (textoPlano.isNotEmpty ? textoPlano : textoEmail)
+          : bodyFallback;
+
+      return {
+        'assunto': assunto,
+        'body': bodyFromTemplate,
+        'htmlBody': textoEmail.isNotEmpty ? textoEmail : htmlFallback,
+      };
+    } catch (e) {
+      debugPrint('Erro ao buscar template de finalização do SOS: $e');
+      return {
+        'assunto': assuntoFallback,
+        'body': bodyFallback,
+        'htmlBody': htmlFallback,
+      };
+    }
+  }
+
+  Future<void> _enviarEmailsSosGuardioes(
+    List<String> guardioesIds,
+    String textoSocorro,
+  ) async {
+    if (guardioesIds.isEmpty) return;
+
+    try {
+      final contatos = await _buscarContatosGuardioes(guardioesIds);
+      if (contatos.isEmpty) return;
+
+      final tpl = await _tplSosGuardiao();
+      final assunto = tpl['assunto'] ?? '🚨 SOS acionado - InTrouble';
+      final body = tpl['body']?.isNotEmpty == true
+          ? tpl['body']!
+          : 'Olá {nomeGuardiao}, {nome} acionou o SOS no app InTrouble. Mensagem: {socorro}. Hora: {hora}.';
+      final htmlBody = tpl['htmlBody'];
+
+      for (final contato in contatos) {
+        final email = contato['email'] ?? '';
+        final nomeGuardiao = contato['nome'];
+
+        if (email.isEmpty) continue;
+
+        try {
+          await _emailSvc.enviarEmailViaBackend(
+            to: email,
+            subject: assunto,
+            body: body,
+            htmlBody: htmlBody,
+            nomeGuardiao: nomeGuardiao,
+            textoSocorro: textoSocorro,
+          );
+        } catch (e) {
+          debugPrint('Erro ao enviar e-mail de SOS para $email: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro geral ao enviar e-mails de SOS: $e');
+    }
+  }
+
+  Future<void> _enviarEmailsSosFinalizado(List<String> guardioesIds) async {
+    if (guardioesIds.isEmpty) return;
+
+    try {
+      final contatos = await _buscarContatosGuardioes(guardioesIds);
+      if (contatos.isEmpty) return;
+
+      final tpl = await _tplSosGuardiaoFinalizado();
+      final assunto = tpl['assunto'] ?? '✅ SOS finalizado - InTrouble';
+      final body = tpl['body']?.isNotEmpty == true
+          ? tpl['body']!
+          : 'Olá {nomeGuardiao}, {nome} finalizou o SOS no app InTrouble. Horário: {hora}.';
+      final htmlBody = tpl['htmlBody'];
+
+      for (final contato in contatos) {
+        final email = contato['email'] ?? '';
+        final nomeGuardiao = contato['nome'];
+
+        if (email.isEmpty) continue;
+
+        try {
+          await _emailSvc.enviarEmailViaBackend(
+            to: email,
+            subject: assunto,
+            body: body,
+            htmlBody: htmlBody,
+            nomeGuardiao: nomeGuardiao,
+          );
+        } catch (e) {
+          debugPrint('Erro ao enviar e-mail de finalização de SOS para $email: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro geral ao enviar e-mails de finalização do SOS: $e');
+    }
+  }
+
+
   // =========================================================
 
   Future<void> _onToggleSOS() async {
@@ -117,6 +345,7 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
 
       if (_sosAtivo) {
         // === FINALIZAR SOS ===
+        final guardioesIds = await _buscarGuardioesAceitosEAtivos(uid);
         await _tracker.stop(); // Para rastreamento de localização
 
         if (_ocorrenciaId != null) {
@@ -129,12 +358,13 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
             await _media?.stop();
           }
 
-          // Atualiza status para "finalizado" (Cloud Function onSosFinalizado cuida do SMS)
           await _fs.finalizarOcorrencia(_ocorrenciaId!);
         } else {
           await _media?.stop();
         }
 
+        _enviarEmailsSosFinalizado(guardioesIds);
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('SOS finalizado e mídia enviada.')),
@@ -148,7 +378,7 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
           desiredAccuracy: LocationAccuracy.high,
         );
 
-        // 2) Buscar nome do usuário (só para salvar/telemetria, SMS é backend)
+        // 2) Buscar nome do usuário (só para salvar/telemetria)
         String nomeUsuario = 'Usuário';
         try {
           final userDoc = await FirebaseFirestore.instance
@@ -166,14 +396,16 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
         // 3) Buscar IDs dos guardiões aceitos/ativos
         final guardioesIds = await _buscarGuardioesAceitosEAtivos(uid);
 
-        // 4) Abrir ocorrência SOS no Firestore usando o MESMO addOcorrencia
-        //    Cloud Function onSosCreated vai enxergar esse doc e disparar os SMS
+        const textoSocorroPadrao =
+            'Atenção! Estou sob ameaça! Preciso de ajuda imediatamente.';
+        
+        // 4) Abrir ocorrência SOS no Firestore
         final agora = DateTime.now();
         final id = await _fs.addOcorrencia(
           'SOS',
           'Gravíssima',
           'SOS acionado pelo usuário $nomeUsuario',
-          'Atenção! Estou sob ameaça! Preciso de ajuda imediatamente.',
+          textoSocorroPadrao,
           true, // enviarParaGuardiao (se você usa essa flag em outro lugar)
           anexosLocais: const [],
           idGuardiao: guardioesIds,
@@ -185,7 +417,10 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
         );
         _ocorrenciaId = id;
 
-        // 5) Mídia + rastreamento locais (apenas para evidências)
+        // 5) Enviar e-mail de SOS para os guardiões
+        _enviarEmailsSosGuardioes(guardioesIds, textoSocorroPadrao);
+
+        // 6) Mídia + rastreamento locais (apenas para evidências)
         _media ??= await _obterMediaRecorder();
         await _tracker.start();
         await _media!.start();
