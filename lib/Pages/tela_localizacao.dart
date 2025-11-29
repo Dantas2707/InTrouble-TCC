@@ -5,13 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-// Paleta rosa
-const kRosaMuitoClaro = Color(0xFFF2DFE0); // #F2DFE0
-const kRosaClaro = Color(0xFFF2C4CD);      // #F2C4CD
-const kRosaMedio = Color(0xFFD9B4BB);      // #D9B4BB
-const kRosaSuave = Color(0xFFF2C4C4);      // #F2C4C4
-const kCinzaClaro = Color(0xFFF2F2F2);     // #F2F2F2
+import 'package:crud/theme/app_colors.dart';
 
 class GuardianMapPage extends StatefulWidget {
   const GuardianMapPage({Key? key}) : super(key: key);
@@ -25,6 +19,7 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
   final Set<Marker> _markers = {};
   bool _loading = true;
   String _statusText = 'Carregando…';
+  String? _guardiaoUid;
 
   // Subscrições
   StreamSubscription<QuerySnapshot>? _vinculosSub;
@@ -105,6 +100,8 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
       return;
     }
 
+    _guardiaoUid = guardiaoUid;
+
     final vinculosRef = FirebaseFirestore.instance
         .collection('guardiões')
         .where('id_guardiao', isEqualTo: guardiaoUid)
@@ -124,7 +121,10 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
         try {
           await _preloadUserNames(victims);
         } catch (_) {}
-        _subscribeToOcorrenciasAbertas(victims);
+        _subscribeToOcorrenciasAbertas(
+          victims,
+          guardiaoUid,
+        );
       }();
     }, onError: (_) {
       setState(() {
@@ -164,10 +164,10 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
     }
   }
 
-  void _subscribeToOcorrenciasAbertas(List<String> victimIds) {
-    for (final s in _ocorrenciasSubs) {
-      s.cancel();
-    }
+  void _subscribeToOcorrenciasAbertas(
+    List<String> victimIds,
+    String guardiaoUid,
+  ) {
     _ocorrenciasSubs.clear();
     _ocorrenciasAbertas.clear();
 
@@ -187,7 +187,8 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
 
       final q = FirebaseFirestore.instance
           .collection('ocorrencias')
-          .where('ownerUid', whereIn: bloco);
+          .where('ownerUid', whereIn: bloco)
+          .where('id_guardiao', arrayContains: guardiaoUid);
 
       final sub = q.snapshots().listen((snap) {
         for (final change in snap.docChanges) {
@@ -282,7 +283,7 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
                 ListTile(
                   leading: const Icon(
                     Icons.visibility_off,
-                    color: kRosaMedio,
+                    color: AppColors.primaryMedium,
                   ),
                   title: const Text('Excluir da visualização'),
                   subtitle: const Text(
@@ -371,7 +372,7 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
       // Marcadores em tom "rosa" para SOS aberto e azul-claro para finalizado
       final hue = status == 'finalizado'
           ? BitmapDescriptor.hueAzure
-          : BitmapDescriptor.hueRose;
+          : HSVColor.fromColor(AppColors.primary).hue;
 
       if (status != 'finalizado') countAbertos++;
 
@@ -460,18 +461,18 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
         elevation: 0,
         centerTitle: true,
         backgroundColor: const Color.fromARGB(0, 0, 0, 0),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Color.fromARGB(255, 44, 44, 44)),
         title: const Text(
           'Vítimas com SOS aberto',
           style: TextStyle(
-            color: Colors.white,
+            color: Color.fromARGB(255, 255, 0, 0),
             fontWeight: FontWeight.w600,
           ),
         ),
         flexibleSpace: const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [kRosaClaro, kRosaMedio],
+              colors: [AppColors.primary, AppColors.primaryMedium],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -497,8 +498,8 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: _markers.isEmpty
-                      ? [kCinzaClaro, kCinzaClaro]
-                      : [kRosaMuitoClaro, kCinzaClaro],
+                      ? [AppColors.grayLight, AppColors.grayLight]
+                      : [AppColors.primaryLight, AppColors.grayLight],
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                 ),
@@ -517,7 +518,7 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
                           shape: BoxShape.circle,
                           color: _markers.isEmpty
                               ? Colors.grey.shade300
-                              : kRosaClaro,
+                              : AppColors.primary,
                         ),
                         child: Icon(
                           _markers.isEmpty
@@ -563,7 +564,7 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
                       alignment: Alignment.centerRight,
                       child: OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: kRosaMedio),
+                          side: const BorderSide(color: AppColors.primaryMedium),
                           foregroundColor:
                               const Color.fromARGB(255, 120, 96, 102),
                           textStyle: const TextStyle(fontSize: 12),

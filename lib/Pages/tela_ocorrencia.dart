@@ -9,7 +9,8 @@ import 'package:open_filex/open_filex.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
-import 'package:crud/services/sms_service.dart'; // ✅ usando o service novo
+import 'package:crud/services/sms_service.dart';
+import 'package:crud/theme/app_colors.dart';
 
 class OcorrenciasPage extends StatefulWidget {
   const OcorrenciasPage({super.key});
@@ -23,13 +24,6 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
   late final TabController _tabController;
   final FirestoreService _service = FirestoreService();
   late final String _uid;
-
-  // Paleta
-  static const Color _colF2DFE0 = Color(0xFFF2DFE0);
-  static const Color _colF2C4CD = Color(0xFFF2C4CD);
-  static const Color _colD9B4BB = Color(0xFFD9B4BB);
-  static const Color _colF2C4C4 = Color(0xFFF2C4C4);
-  static const Color _colF2F2F2 = Color(0xFFF2F2F2);
 
   @override
   void initState() {
@@ -309,13 +303,13 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _colF2F2F2,
+      backgroundColor: AppColors.grayLight,
       appBar: AppBar(
         title: const Text(
           'Minhas ocorrências',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
-        backgroundColor: _colF2C4CD,
+        backgroundColor: AppColors.primary,
         elevation: 0,
         centerTitle: true,
         bottom: TabBar(
@@ -341,7 +335,7 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
                 gradient: const LinearGradient(
-                  colors: [_colF2DFE0, _colF2C4CD],
+                  colors: [AppColors.primaryLight, AppColors.primary],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -522,9 +516,9 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
                             width: 100,
                             height: 80,
                             decoration: BoxDecoration(
-                              color: _colF2DFE0,
+                              color: AppColors.primaryLight,
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: _colF2C4CD),
+                              border: Border.all(color: AppColors.primary),
                             ),
                             child: Stack(
                               fit: StackFit.expand,
@@ -595,7 +589,7 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
                       for (int idx = 0; idx < anexosLocais.length; idx++)
                         InputChip(
                           label: Text('Arquivo ${idx + 1}'),
-                          backgroundColor: _colF2DFE0,
+                          backgroundColor: AppColors.primaryLight,
                           onPressed: () => _abrirLocal(anexosLocais[idx]),
                           onDeleted: (status == 'aberto')
                               ? () async {
@@ -674,7 +668,7 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
                           );
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _colF2C4C4,
+                          backgroundColor: AppColors.primarySoft,
                           foregroundColor: Colors.black87,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
@@ -735,7 +729,7 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
                           }
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _colD9B4BB,
+                          backgroundColor: AppColors.primaryMedium,
                           foregroundColor: Colors.black87,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
@@ -1009,10 +1003,10 @@ class _StatusChip extends StatelessWidget {
     String label;
 
     if (st == 'aberto') {
-      bg = const Color(0xFFF2C4C4); // rosa mais forte
+      bg = AppColors.primarySoft;
       label = 'ABERTO';
     } else if (st == 'finalizado') {
-      bg = const Color(0xFFD9B4BB);
+      bg = AppColors.primaryMedium;
       label = 'FINALIZADO';
     } else {
       bg = Colors.grey.shade300;
@@ -1227,9 +1221,9 @@ class _GridLocais extends StatelessWidget {
           onTap: () => OpenFilex.open(path),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF2DFE0),
+              color: AppColors.primaryLight,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFF2C4CD)),
+              border: Border.all(color: AppColors.primary),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

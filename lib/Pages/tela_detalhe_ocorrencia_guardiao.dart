@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:crud/theme/app_colors.dart';
 
 class TelaDetalheOcorrenciaGuardiao extends StatelessWidget {
   final String ocorrenciaId;
@@ -125,7 +126,7 @@ class TelaDetalheOcorrenciaGuardiao extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Detalhes da ocorrência'),
-        backgroundColor: Colors.pink,
+        backgroundColor: AppColors.primary,
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

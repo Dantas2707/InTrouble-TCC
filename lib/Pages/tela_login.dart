@@ -3,7 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'tela_admin_home.dart';
 import 'home_page.dart';
 import 'tela_usuario.dart';
-import 'tela_redefinir_senha.dart'; 
+import 'tela_redefinir_senha.dart';
+import 'package:crud/theme/app_colors.dart';
+
 
 class TelaLogin extends StatefulWidget {
   const TelaLogin({Key? key}) : super(key: key);
@@ -128,7 +130,7 @@ class _TelaLoginState extends State<TelaLogin> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final customColor = const Color(0xFFF2C4CD);
+    final customColor = AppColors.primary;
 
     InputDecoration _fieldDeco(String hint) => InputDecoration(
           hintText: hint,

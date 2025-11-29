@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // 👈 pra usar TextInputFormatter
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:crud/services/firestore.dart';
 import 'tela_login.dart';
@@ -9,13 +9,14 @@ import 'package:crypto/crypto.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
+import 'package:crud/theme/app_colors.dart';
 
-// ===================== PALETA =====================
-const kRosaMuitoClaro = Color(0xFFF2DFE0); // #F2DFE0
-const kRosaClaro      = Color(0xFFF2C4CD); // #F2C4CD
-const kRosaMedio      = Color(0xFFD9B4BB); // #D9B4BB
-const kRosaSuave      = Color(0xFFF2C4C4); // #F2C4C4
-const kCinzaClaro     = Color(0xFFF2F2F2); // #F2F2F2
+const kRosaMuitoClaro = AppColors.primaryLight;
+const kRosaClaro = AppColors.primary;
+const kRosaMedio = AppColors.primaryMedium;
+const kRosaSuave = AppColors.primarySoft;
+const kCinzaClaro = AppColors.grayLight;
+
 
 // ===================== MENSAGENS / EMAIL (opcional) =====================
 
@@ -293,7 +294,6 @@ class _TelaUsuarioState extends State<TelaUsuario> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // AppBar com a paleta rosa
       appBar: AppBar(
         elevation: 0,
         backgroundColor: kRosaClaro,

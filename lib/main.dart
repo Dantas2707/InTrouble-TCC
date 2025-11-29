@@ -5,14 +5,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-
-// 👇 IMPORTANTE: watcher global que observa login + SOS
 import 'package:crud/services/sos_app_watcher.dart';
 
 // ====== PALETA GLOBAL ======
-const kRosaClaro = Color(0xFFF2C4CD);      // #F2C4CD
-const kRosaMuitoClaro = Color(0xFFF2DFE0); // #F2DFE0
-const kCinzaClaro = Color(0xFFF2F2F2);     // #F2F2F2
+import 'package:crud/theme/app_colors.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,46 +42,46 @@ class MyApp extends StatelessWidget {
       // ====== TEMA GLOBAL (rosa) ======
       theme: ThemeData(
         useMaterial3: false,
-        primaryColor: kRosaClaro,
+        primaryColor: AppColors.primary,
 
         colorScheme: ColorScheme.fromSeed(
-          seedColor: kRosaClaro,
+          seedColor: AppColors.primary,
           brightness: Brightness.light,
         ),
 
-        textSelectionTheme: const TextSelectionThemeData(
-          cursorColor: kRosaClaro,
-          selectionColor: Color(0x33F2C4CD),
-          selectionHandleColor: kRosaClaro,
+        textSelectionTheme: TextSelectionThemeData(
+          cursorColor: AppColors.primary,
+          selectionColor: AppColors.primary.withOpacity(0.2),
+          selectionHandleColor: AppColors.primary,
         ),
 
         inputDecorationTheme: InputDecorationTheme(
-  filled: true,
-  fillColor: kCinzaClaro,
-  // tiramos o borderRadius daqui 👇
-  border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(18),
-    borderSide: BorderSide.none,
-  ),
-  enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(18),
-    borderSide: BorderSide.none,
-  ),
-  focusedBorder: const OutlineInputBorder(
-    borderRadius: BorderRadius.all(Radius.circular(18)),
-    borderSide: BorderSide(
-      color: kRosaClaro,
-      width: 1.5,
-    ),
-  ),
-  labelStyle: const TextStyle(
-    color: Color.fromARGB(255, 120, 96, 102),
-  ),
-),
+          filled: true,
+          fillColor: AppColors.grayLight,
+          // tiramos o borderRadius daqui 👇
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: const OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(18)),
+            borderSide: BorderSide(
+              color: AppColors.primary,
+              width: 1.5,
+            ),
+          ),
+          labelStyle: const TextStyle(
+            color: Color.fromARGB(255, 120, 96, 102),
+          ),
+        ),
 
 
         appBarTheme: const AppBarTheme(
-          backgroundColor: kRosaClaro,
+          backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           centerTitle: true,
           elevation: 0,

@@ -1,16 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
 import '../services/firestore.dart';
 import 'tela_detalhe_ocorrencia_guardiao.dart';
+import 'package:crud/theme/app_colors.dart';
 
-// Cores da paleta
-const kRosaMuitoClaro = Color(0xFFF2DFE0); // #F2DFE0
-const kRosaClaro = Color(0xFFF2C4CD); // #F2C4CD
-const kRosaMedio = Color(0xFFD9B4BB); // #D9B4BB
-const kRosaSuave = Color(0xFFF2C4C4); // #F2C4C4
-const kCinzaClaro = Color(0xFFF2F2F2); // #F2F2F2
+
+const kRosaMuitoClaro = AppColors.primaryLight;
+const kRosaClaro = AppColors.primary;
+const kRosaMedio = AppColors.primaryMedium;
+const kRosaSuave = AppColors.primarySoft;
+const kCinzaClaro = AppColors.grayLight;
+
 
 class TelaOcorrenciasAcompanhar extends StatefulWidget {
   const TelaOcorrenciasAcompanhar({super.key});

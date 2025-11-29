@@ -6,13 +6,14 @@ import 'package:crud/services/firestore.dart';
 import 'package:crud/services/sos_location_tracker.dart';
 import 'package:crud/services/sos_media_recorder.dart';
 import 'package:crud/services/enviar_email.dart';
+import 'package:crud/theme/app_colors.dart';
 
-// ===================== PALETA =====================
-const kRosaMuitoClaro = Color(0xFFF2DFE0); // #F2DFE0
-const kRosaClaro      = Color(0xFFF2C4CD); // #F2C4CD
-const kRosaMedio      = Color(0xFFD9B4BB); // #D9B4BB
-const kRosaSuave      = Color(0xFFF2C4C4); // #F2C4C4
-const kCinzaClaro     = Color(0xFFF2F2F2); // #F2F2F2
+const kRosaMuitoClaro = AppColors.primaryLight;
+const kRosaClaro = AppColors.primary;
+const kRosaMedio = AppColors.primaryMedium;
+const kRosaSuave = AppColors.primarySoft;
+const kCinzaClaro = AppColors.grayLight;
+
 
 class TelaVitimaSOS extends StatefulWidget {
   const TelaVitimaSOS({Key? key}) : super(key: key);

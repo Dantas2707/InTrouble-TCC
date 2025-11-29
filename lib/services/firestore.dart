@@ -437,10 +437,6 @@ class FirestoreService {
   // ==============================================================
 
   /// Cria uma ocorrência (normal ou SOS).
-  ///
-  /// Uso típico:
-  /// - Tela normal: passa `isSos: false`, `latitudeInicial`, `longitudeInicial`, `dataHoraAbertura`.
-  /// - Fluxo SOS: passa `isSos: true` e/ou tipo "SOS", usando `latitude`.
   Future<String> addOcorrencia(
     String tipo,
     String gravidade,
@@ -469,22 +465,22 @@ class FirestoreService {
     final double? latEfetiva = latitude ?? latitudeInicial;
     final double? lonEfetiva = longitude ?? longitudeInicial;
     final DateTime agora = dataHoraAbertura ?? DateTime.now();
+    final List<String> guardioes = List<String>.from(idGuardiao ?? const []);
 
     final Map<String, dynamic> baseData = {
-      'ownerUid': ownerUid,
-      'id_guardiao': idGuardiao ?? [],
-      'descricao': relato,
-      'status': 'aberto',
-      'gravidade': gravidade,
-      'relato': relato,
-      'textoSocorro': textoSocorro,
-      'tipoOcorrencia': tipo,
-      'criadoEm': FieldValue.serverTimestamp(),
-      'anexosLocais': midiasLocais,
-      'anexos': [],
-      'isSos': sosFlag,
-      'dataHoraAbertura': agora,
-    };
+    'ownerUid': ownerUid,
+    'id_guardiao': guardioes,
+    'status': 'aberto',
+    'gravidade': gravidade,
+    'relato': relato,
+    'textoSocorro': textoSocorro,
+    'tipoOcorrencia': tipo,
+    'criadoEm': FieldValue.serverTimestamp(),
+    'anexosLocais': midiasLocais,
+    'anexos': [],
+    'isSos': sosFlag,
+};
+
 
     if (latEfetiva != null) baseData['latitude'] = latEfetiva;
     if (lonEfetiva != null) baseData['longitude'] = lonEfetiva;

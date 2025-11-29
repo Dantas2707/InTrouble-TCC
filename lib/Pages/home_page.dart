@@ -15,6 +15,7 @@ import 'tela_localizacao.dart';
 import 'tela_sos.dart';
 import 'perfil_usuario_e_guardiao.dart';
 import 'tela_ocorrencias_acompanhar.dart';
+import 'package:crud/theme/app_colors.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -28,11 +29,11 @@ class _HomePageState extends State<HomePage> {
   final FirestoreService _fs = FirestoreService();
 
   // Paleta de cores
-  static const Color _colF2DFE0 = Color(0xFFF2DFE0);
-  static const Color _colF2C4CD = Color(0xFFF2C4CD);
-  static const Color _colD9B4BB = Color(0xFFD9B4BB);
-  static const Color _colF2C4C4 = Color(0xFFF2C4C4);
-  static const Color _colF2F2F2 = Color(0xFFF2F2F2);
+  static const Color _colF2DFE0 = AppColors.primaryLight;
+  static const Color _colF2C4CD = AppColors.primary;
+  static const Color _colD9B4BB = AppColors.primaryMedium;
+  static const Color _colF2C4C4 = AppColors.primarySoft;
+  static const Color _colF2F2F2 = AppColors.grayLight;
 
   bool _temGuardiao = false; // alguém me guarda
   bool _guardoAlguem = false; // eu guardo alguém

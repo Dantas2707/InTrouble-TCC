@@ -1,13 +1,13 @@
-// arquivo: tela_registrar_ocorrencia.dart
 import 'dart:io';
 import 'package:crud/services/firestore.dart';
 import 'package:crud/services/local_media.dart';
-import 'package:crud/services/sms_service.dart'; // ✅ novo import
+import 'package:crud/services/sms_service.dart'; 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:crud/theme/app_colors.dart';
 
 class OcorrenciaPage extends StatefulWidget {
   const OcorrenciaPage({super.key});
@@ -32,13 +32,6 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
     'Médio',
     'Grave',
   ];
-
-  // Paleta
-  static const Color _colF2DFE0 = Color(0xFFF2DFE0);
-  static const Color _colF2C4CD = Color(0xFFF2C4CD);
-  static const Color _colD9B4BB = Color(0xFFD9B4BB);
-  static const Color _colF2C4C4 = Color(0xFFF2C4C4);
-  static const Color _colF2F2F2 = Color(0xFFF2F2F2);
 
   // Guarda caminhos locais
   final List<String> _anexosLocais = [];
@@ -68,11 +61,11 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
       ),
       enabledBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(16)),
-        borderSide: BorderSide(color: _colF2C4CD),
+        borderSide: BorderSide(color: AppColors.primary),
       ),
       focusedBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(16)),
-        borderSide: BorderSide(color: _colD9B4BB, width: 1.6),
+        borderSide: BorderSide(color: AppColors.primaryMedium, width: 1.6),
       ),
     );
   }
@@ -108,7 +101,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
           ),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: background ?? _colF2C4CD,
+          backgroundColor: background ?? AppColors.primary,
           foregroundColor: Colors.black87,
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -480,7 +473,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                           }
                         });
                       },
-                      activeColor: _colF2C4CD,
+                      activeColor: AppColors.primary,
                     );
                   },
                 ),
@@ -496,7 +489,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                           horizontal: 12,
                         ),
                         decoration: BoxDecoration(
-                          color: _colF2C4CD,
+                          color: AppColors.primary,
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Text(
@@ -517,7 +510,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                       child: const Text(
                         'Fechar',
                         style: TextStyle(
-                          color: _colF2C4CD,
+                          color: AppColors.primary,
                         ),
                       ),
                     ),
@@ -536,13 +529,13 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _colF2F2F2,
+      backgroundColor: AppColors.grayLight,
       appBar: AppBar(
         title: const Text(
           'Registrar ocorrência',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
-        backgroundColor: _colF2C4CD,
+        backgroundColor: AppColors.primary,
         elevation: 0,
         centerTitle: true,
       ),
@@ -558,7 +551,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(24),
                   gradient: const LinearGradient(
-                    colors: [_colF2DFE0, _colF2C4CD],
+                    colors: [AppColors.primaryLight, AppColors.primary],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -696,7 +689,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                     _primaryButton(
                       label: 'Selecionar guardiões',
                       icon: Icons.group_outlined,
-                      background: _colF2DFE0,
+                      background: AppColors.primaryLight,
                       onPressed: _selecionarGuards,
                     ),
                     if (_guardioesSelecionados.isNotEmpty) ...[
@@ -713,7 +706,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                     _primaryButton(
                       label: 'Anexar mídia',
                       icon: Icons.attach_file,
-                      background: _colF2C4C4,
+                      background: AppColors.primarySoft,
                       onPressed: _isSaving ? null : _pickAnexos,
                     ),
                     if (_anexosLocais.isNotEmpty) ...[
@@ -760,7 +753,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
                           onPressed:
                               _isSaving ? null : _registrarOcorrencia,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _colD9B4BB,
+                            backgroundColor: AppColors.primaryMedium,
                             foregroundColor: Colors.black87,
                             elevation: 0,
                             padding: const EdgeInsets.symmetric(

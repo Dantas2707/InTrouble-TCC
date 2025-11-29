@@ -1,11 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Clipboard copiar valores
-
-// seus serviços
+import 'package:flutter/services.dart';
 import 'package:crud/services/firestore.dart';
 import 'package:crud/services/enviar_email.dart';
+import 'package:crud/theme/app_colors.dart';
 
 class PerfilGuardiaoScreen extends StatefulWidget {
   const PerfilGuardiaoScreen({Key? key}) : super(key: key);
@@ -17,12 +16,12 @@ class PerfilGuardiaoScreen extends StatefulWidget {
 class _PerfilGuardiaoScreenState extends State<PerfilGuardiaoScreen>
     with SingleTickerProviderStateMixin {
   // --------- Paleta ----------
-  static const _colF2DFE0 = Color(0xFFF2DFE0);
-  static const _colF2C4CD = Color(0xFFF2C4CD);
-  static const _colD9B4BB = Color(0xFFD9B4BB);
-  static const _colF2C4C4 = Color(0xFFF2C4C4);
-  static const _colF2F2F2 = Color(0xFFF2F2F2);
-
+  static const _colF2DFE0 = AppColors.primaryLight;
+  static const _colF2C4CD = AppColors.primary;
+  static const _colD9B4BB = AppColors.primaryMedium;
+  static const _colF2C4C4 = AppColors.primarySoft;
+  static const _colF2F2F2 = AppColors.grayLight;
+  
   late final TabController _tab;
 
   @override

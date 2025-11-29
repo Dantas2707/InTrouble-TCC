@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crud/services/firestore.dart' as fsFirestore;
-import 'package:crud/services/enviar_email.dart' as es; // Para as tags
-
+import 'package:crud/services/enviar_email.dart' as es;
+import 'package:crud/theme/app_colors.dart';
 class TelaTextoEmails extends StatefulWidget {
   const TelaTextoEmails({Key? key}) : super(key: key);
 
@@ -110,7 +110,7 @@ class _TelaTextoEmailsState extends State<TelaTextoEmails> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Editar Texto de E-mail'),
-        backgroundColor: Colors.pink,
+        backgroundColor: AppColors.primary,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),

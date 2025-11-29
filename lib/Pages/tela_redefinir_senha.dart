@@ -1,15 +1,7 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-
-// Paleta
-const kRosaMuitoClaro = Color(0xFFF2DFE0); // #F2DFE0
-const kRosaClaro = Color(0xFFF2C4CD);      // #F2C4CD
-const kRosaMedio = Color(0xFFD9B4BB);      // #D9B4BB
-const kRosaSuave = Color(0xFFF2C4C4);      // #F2C4C4
-const kCinzaClaro = Color(0xFFF2F2F2);     // #F2F2F2
-
+import 'package:crud/theme/app_colors.dart';
 class RedefinirSenhaPage extends StatefulWidget {
   const RedefinirSenhaPage({Key? key}) : super(key: key);
 
@@ -198,14 +190,14 @@ class _RedefinirSenhaPageState extends State<RedefinirSenhaPage> {
     return InputDecoration(
       labelText: label,
       filled: true,
-      fillColor: kCinzaClaro,
+      fillColor: AppColors.grayLight,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
         borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: kRosaClaro, width: 1.4),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
       ),
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -214,7 +206,7 @@ class _RedefinirSenhaPageState extends State<RedefinirSenhaPage> {
 
   ButtonStyle _buttonStyle() {
     return ElevatedButton.styleFrom(
-      backgroundColor: kRosaClaro,
+      backgroundColor: AppColors.primary,
       foregroundColor: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
@@ -255,7 +247,8 @@ class _RedefinirSenhaPageState extends State<RedefinirSenhaPage> {
                 ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  color: active ? kRosaMedio : kRosaMuitoClaro,
+                  color:
+                      active ? AppColors.primaryMedium : AppColors.primaryLight,
                 ),
               ),
               const SizedBox(height: 4),
@@ -278,10 +271,9 @@ class _RedefinirSenhaPageState extends State<RedefinirSenhaPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // AppBar com o rosa da paleta
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: kRosaClaro,
+        backgroundColor: AppColors.primary,
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
@@ -297,7 +289,7 @@ class _RedefinirSenhaPageState extends State<RedefinirSenhaPage> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [kCinzaClaro, kRosaMuitoClaro],
+            colors: [AppColors.grayLight, AppColors.primaryLight],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
