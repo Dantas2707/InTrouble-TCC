@@ -506,6 +506,7 @@ class _GuardioesTabState extends State<_GuardioesTab> {
   final EmailBackendService _emailSvc = EmailBackendService();
   final String _meuId = FirebaseAuth.instance.currentUser!.uid;
   final _emailCtrl = TextEditingController();
+  bool _enviandoConvite = false;
 
   @override
   void dispose() {
@@ -565,8 +566,8 @@ class _GuardioesTabState extends State<_GuardioesTab> {
 }
 
 
-
   Future<void> _enviarConvite() async {
+    if (_enviandoConvite) return;
     final email = _emailCtrl.text.trim();
     if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -574,9 +575,22 @@ class _GuardioesTabState extends State<_GuardioesTab> {
       );
       return;
     }
-    try {
-      await _service.convidarGuardiaoPorEmail(email, _meuId);
 
+    final emailLogado = FirebaseAuth.instance.currentUser?.email?.trim();
+    if (emailLogado != null &&
+        emailLogado.toLowerCase() == email.toLowerCase()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Você não pode se convidar como guardião.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _enviandoConvite = true;
+    });
+
+    try {
+      final reativado = await _service.convidarGuardiaoPorEmail(email, _meuId);
       // Dispara email (se tiver backend configurado)
       try {
         final tpl = await _tplConvite();
@@ -597,12 +611,23 @@ class _GuardioesTabState extends State<_GuardioesTab> {
 
       _emailCtrl.clear();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Convite enviado!')),
+        SnackBar(
+          content: Text(
+            reativado
+                ? 'Convite enviado e guardião reativado!'
+                : 'Convite enviado!',
+          ),
+        ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erro ao enviar convite: $e')),
       );
+      } finally {
+      if (!mounted) return;
+      setState(() {
+        _enviandoConvite = false;
+      });
     }
   }
 
@@ -636,6 +661,7 @@ class _GuardioesTabState extends State<_GuardioesTab> {
   void _inativarGuardiao(String idGuardiao) async {
     try {
       await _service.inativarGuardiao(_meuId, idGuardiao); // Chama a função de inativação
+      setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Guardião inativado com sucesso!')),
       );
@@ -650,6 +676,7 @@ class _GuardioesTabState extends State<_GuardioesTab> {
   void _reativarGuardiao(String idGuardiao) async {
     try {
       await _service.reativarGuardiao(_meuId, idGuardiao); // Chama a função de reativação
+      setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Guardião reativado com sucesso!')),
       );
@@ -694,9 +721,18 @@ class _GuardioesTabState extends State<_GuardioesTab> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: FilledButton.icon(
-                      onPressed: _enviarConvite,
-                      icon: const Icon(Icons.send),
-                      label: const Text('Enviar Convite'),
+                      onPressed:
+                          _enviandoConvite ? null : _enviarConvite, // desabilita no loading
+                      icon: _enviandoConvite
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.send),
+                      label: Text(
+                        _enviandoConvite ? 'Enviando...' : 'Enviar Convite',
+                      ),
                     ),
                   ),
                 ],
@@ -751,47 +787,30 @@ class _GuardioesTabState extends State<_GuardioesTab> {
                             leading: const CircleAvatar(
                                 child: Icon(Icons.mail_outline)),
                             title: Text(nomeUsuario.isEmpty
-                                ? 'Convite recebido'
-                                : 'Convite de: $nomeUsuario'),
-                            subtitle: Text('Status: ${doc['status']}'),
-                            trailing: Wrap(
-                              spacing: 4,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.check,
-                                      color: Colors.green),
-                                  tooltip: 'Aceitar',
-                                  onPressed: () =>
-                                      _aceitarConvite(conviteId, idUsuario),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.close,
-                                      color: Colors.red),
-                                  tooltip: 'Recusar',
-                                  onPressed: () =>
-                                      _recusarConvite(conviteId),
-                                ),
-                                // Exibir o ícone de inativação (lixeira) ou reativação
-                                if (doc['status'] != 'inativo')
-                                  IconButton(
-                                    icon: const Icon(Icons.delete,
-                                        color: Colors.red),
-                                    tooltip: 'Inativar',
-                                    onPressed: () =>
-                                        _inativarGuardiao(doc['id_guardiao']),
-                                  )
-                                else
-                                  IconButton(
-                                    icon: const Icon(Icons.refresh,
-                                        color: Colors.green),
-                                    tooltip: 'Reativar',
-                                    onPressed: () =>
-                                        _reativarGuardiao(doc['id_guardiao']),
-                                  ),
-                              ],
-                            ),
-                          );
-                        },
+                              ? 'Convite recebido'
+                              : 'Convite de: $nomeUsuario'),
+                          subtitle: Text('Status: ${doc['status']}'),
+                          trailing: Wrap(
+                            spacing: 4,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.check,
+                                    color: Colors.green),
+                                tooltip: 'Aceitar',
+                                onPressed: () =>
+                                    _aceitarConvite(conviteId, idUsuario),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close,
+                                    color: Colors.red),
+                                tooltip: 'Recusar',
+                                onPressed: () =>
+                                    _recusarConvite(conviteId),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                       );
                     },
                   ),
@@ -849,8 +868,15 @@ class _GuardioesTabState extends State<_GuardioesTab> {
 
 /* ------------------ Sub-seções reutilizáveis ------------------ */
 
-class _MeusGuardioesSection extends StatelessWidget {
+class _MeusGuardioesSection extends StatefulWidget {
   const _MeusGuardioesSection();
+
+  @override
+  State<_MeusGuardioesSection> createState() => _MeusGuardioesSectionState();
+}
+
+class _MeusGuardioesSectionState extends State<_MeusGuardioesSection> {
+  final FirestoreService _service = FirestoreService();
 
   @override
   Widget build(BuildContext context) {
@@ -907,18 +933,13 @@ class _MeusGuardioesSection extends StatelessWidget {
                           icon: const Icon(Icons.delete, color: Colors.red),
                           tooltip: 'Inativar guardião',
                           onPressed: () async {
-                            await FirebaseFirestore.instance
-                                .collection('usuario')
-                                .doc(meuId)
-                                .update({
-                              'guardioes': FieldValue.arrayRemove([gid])
-                            });
-                            if (ctx.mounted) {
-                              ScaffoldMessenger.of(ctx).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Guardião inativado')),
-                              );
-                            }
+                            await _service.inativarGuardiao(meuId, gid);
+                            if (!mounted) return;
+                            setState(() {});
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Guardião inativado')),
+                            );
                           },
                         ),
                       );
@@ -947,7 +968,7 @@ class _UsuariosQueGuardoSection extends StatelessWidget {
       stream: FirebaseFirestore.instance
           .collection('guardiões')
           .where('id_guardiao', isEqualTo: meuId)
-          .where('status', isEqualTo: 'aceito')
+          .where('status', whereIn: ['aceito', 'ativo'])
           .snapshots(),
       builder: (ctx, snap) {
         if (snap.connectionState == ConnectionState.waiting) {

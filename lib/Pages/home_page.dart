@@ -91,20 +91,13 @@ class _HomePageState extends State<HomePage> {
     final guardioesList = (data?['guardioes'] as List?) ?? [];
     final bool temGuardiao = guardioesList.isNotEmpty;
 
-    final aceitosSnap = await _fs.guardioes
+    final guardioesQueEuCuido = await _fs.guardioes
         .where('id_guardiao', isEqualTo: _uid)
-        .where('status', isEqualTo: 'aceito')
+        .where('status', whereIn: ['aceito', 'ativo'])
         .limit(1)
         .get();
 
-    final ativosSnap = await _fs.guardioes
-        .where('id_guardiao', isEqualTo: _uid)
-        .where('status', isEqualTo: 'ativo')
-        .limit(1)
-        .get();
-
-    final bool euGuardoAlguem =
-        aceitosSnap.docs.isNotEmpty || ativosSnap.docs.isNotEmpty;
+    final bool euGuardoAlguem = guardioesQueEuCuido.docs.isNotEmpty;
 
     setState(() {
       _temGuardiao = temGuardiao;
@@ -115,7 +108,7 @@ class _HomePageState extends State<HomePage> {
     // Escutas em tempo real
     _fs.guardioes
         .where('id_usuario', isEqualTo: _uid)
-        .where('status', isEqualTo: 'aceito')
+        .where('status', whereIn: ['aceito', 'ativo'])
         .snapshots()
         .listen((_) => _verificarStatusGuardiao());
 
@@ -128,20 +121,13 @@ class _HomePageState extends State<HomePage> {
     final guardioesList = (data?['guardioes'] as List?) ?? [];
     final bool temGuardiao = guardioesList.isNotEmpty;
 
-    final aceitosSnap = await _fs.guardioes
+    final guardioesQueEuCuido = await _fs.guardioes
         .where('id_guardiao', isEqualTo: _uid)
-        .where('status', isEqualTo: 'aceito')
+        .where('status', whereIn: ['aceito', 'ativo'])
         .limit(1)
         .get();
 
-    final ativosSnap = await _fs.guardioes
-        .where('id_guardiao', isEqualTo: _uid)
-        .where('status', isEqualTo: 'ativo')
-        .limit(1)
-        .get();
-
-    final bool euGuardoAlguem =
-        aceitosSnap.docs.isNotEmpty || ativosSnap.docs.isNotEmpty;
+    final bool euGuardoAlguem = guardioesQueEuCuido.docs.isNotEmpty;
 
     setState(() {
       _temGuardiao = temGuardiao;

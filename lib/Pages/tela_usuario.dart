@@ -525,6 +525,10 @@ class _TelaUsuarioState extends State<TelaUsuario> {
                                 value: 'Feminino',
                                 child: Text('Feminino'),
                               ),
+                              DropdownMenuItem(
+                                value: 'Outro',
+                                child: Text('Outro'),
+                              ),
                             ],
                             onChanged: (valor) =>
                                 setState(() => _sexoSelecionado = valor),

@@ -89,7 +89,7 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
     final vinculosRef = FirebaseFirestore.instance
         .collection('guardiões')
         .where('id_guardiao', isEqualTo: guardiaoUid)
-        .where('status', isEqualTo: 'aceito');
+        .where('status', whereIn: ['aceito', 'ativo']);
 
     _vinculosSub = vinculosRef.snapshots().listen((snap) {
       final victims = <String>[];

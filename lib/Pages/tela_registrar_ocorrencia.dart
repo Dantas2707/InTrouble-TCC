@@ -415,7 +415,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
 
     final guardioesSnapshot = await FirebaseFirestore.instance
         .collection('guardiões')
-        .where('status', isEqualTo: 'aceito')
+        .where('status', whereIn: ['aceito', 'ativo'])
         .where('id_usuario', isEqualTo: uid)
         .get();
 

@@ -89,7 +89,8 @@ class FirestoreService {
   // ==============================================================
 
   // Função para convidar um guardião por e-mail
-  Future<void> convidarGuardiaoPorEmail(String email, String idUsuario) async {
+  Future<bool> convidarGuardiaoPorEmail(String email, String idUsuario) async {
+    bool reativado = false;
     try {
       // 1) Buscar o usuário que será guardião pelo e-mail
       final QuerySnapshot userSnapshot =
@@ -100,7 +101,7 @@ class FirestoreService {
           "Usuário não encontrado. Enviando convite para baixar o app."
         );
         // Aqui você pode disparar e-mail com link do app, se quiser
-        return;
+        return false;
       }
 
       final String idGuardiao = userSnapshot.docs.first.id;
@@ -117,12 +118,34 @@ class FirestoreService {
         final data = doc.data() as Map<String, dynamic>;
         final String status = (data['status'] ?? 'pendente') as String;
 
+        if (status == 'inativo') {
+          final DocumentSnapshot senderDoc = await usuario.doc(idUsuario).get();
+          final String nomeUsuario = senderDoc.get('nome');
+
+          await doc.reference.update({
+            'nome_usuario': nomeUsuario,
+            'invitado': true,
+            'timestamp': Timestamp.now(),
+            'status': 'pendente', // volta para pendente para reativar relacionamento
+          });
+
+          await usuario.doc(idUsuario).update({
+            'guardioes_inativos': FieldValue.arrayRemove([idGuardiao]),
+          });
+
+          reativado = true;
+          debugPrint(
+            "Guardião estava inativo e foi reativado para novo convite.",
+          );
+          return reativado;
+        }
+
         if (status == 'pendente') {
           // Já tem convite enviado e aguardando resposta
           throw Exception("Já existe um convite pendente para esse guardião.");
         }
 
-        if (status == 'aceito') {
+        if (status == 'aceito' || status == 'ativo') {
           // Já é guardião, não faz sentido convidar de novo
           throw Exception("Esse usuário já é seu guardião.");
         }
@@ -142,7 +165,7 @@ class FirestoreService {
           debugPrint(
             "Convite reenviado para guardião que havia recusado anteriormente."
           );
-          return;
+          return reativado;
         }
 
         // Se aparecer algum outro status inesperado, você pode tratar aqui
@@ -160,6 +183,7 @@ class FirestoreService {
         'timestamp': Timestamp.now(),
         'status': 'pendente',
       });
+      return reativado;
     } catch (e) {
       debugPrint("Erro ao convidar guardião: $e");
       throw Exception("Erro ao convidar guardião: $e");
@@ -170,12 +194,13 @@ class FirestoreService {
   Future<void> aceitarConviteGuardiao(
       String conviteDocId, String idUsuario, String idGuardiao) async {
     await guardioes.doc(conviteDocId).update({
-      'status': 'aceito',
+      'status': 'ativo',
       'timestamp': Timestamp.now(),
     });
 
     await usuario.doc(idUsuario).update({
       'guardioes': FieldValue.arrayUnion([idGuardiao]),
+      'guardioes_inativos': FieldValue.arrayRemove([idGuardiao]),
     });
 
     await usuario.doc(idGuardiao).update({'guardiao': true});
@@ -388,25 +413,15 @@ class FirestoreService {
       throw Exception('Usuário não autenticado');
     }
 
-    // Busca guardiões com status 'aceito'
+    // Busca guardiões com status aceito ou ativo
     final aceitosSnap = await guardioes
         .where('id_usuario', isEqualTo: ownerUid)
-        .where('status', isEqualTo: 'aceito')
-        .get();
-
-    // E também 'ativo', se você já usa essa etapa de ativação
-    final ativosSnap = await guardioes
-        .where('id_usuario', isEqualTo: ownerUid)
-        .where('status', isEqualTo: 'ativo')
+        .where('status', whereIn: ['aceito', 'ativo'])
         .get();
 
     final idsSet = <String>{};
 
     for (final doc in aceitosSnap.docs) {
-      final idG = (doc['id_guardiao'] as String?) ?? '';
-      if (idG.isNotEmpty) idsSet.add(idG);
-    }
-    for (final doc in ativosSnap.docs) {
       final idG = (doc['id_guardiao'] as String?) ?? '';
       if (idG.isNotEmpty) idsSet.add(idG);
     }

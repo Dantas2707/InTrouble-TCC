@@ -85,23 +85,12 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     final aceitosSnap = await FirebaseFirestore.instance
         .collection('guardiões')
         .where('id_usuario', isEqualTo: uid)
-        .where('status', isEqualTo: 'aceito')
-        .get();
-
-    final ativosSnap = await FirebaseFirestore.instance
-        .collection('guardiões')
-        .where('id_usuario', isEqualTo: uid)
-        .where('status', isEqualTo: 'ativo')
+        .where('status', whereIn: ['aceito', 'ativo'])
         .get();
 
     final idsSet = <String>{};
 
     for (final doc in aceitosSnap.docs) {
-      final idG = (doc['id_guardiao'] as String?) ?? '';
-      if (idG.isNotEmpty) idsSet.add(idG);
-    }
-
-    for (final doc in ativosSnap.docs) {
       final idG = (doc['id_guardiao'] as String?) ?? '';
       if (idG.isNotEmpty) idsSet.add(idG);
     }
