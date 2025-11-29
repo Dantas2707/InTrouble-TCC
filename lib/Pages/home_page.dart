@@ -664,7 +664,7 @@ class _HomePageState extends State<HomePage> {
                       const SizedBox(height: 12),
                       _buildActionButton(
                         icon: Icons.location_on_outlined,
-                        label: 'Localização da vítima',
+                        label: 'Localização das ocorrências',
                         onPressed: () {
                           Navigator.push(
                             context,

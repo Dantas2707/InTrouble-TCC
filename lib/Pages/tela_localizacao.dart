@@ -41,7 +41,6 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
   }
 
   Future<void> _init() async {
-    // await _loadHiddenMarkers();     // NOVO: carrega ocultos do storage (se quiser reativar)
     await _checkLocationPermissions();
     _listenVinculosAceitos();
   }
@@ -74,21 +73,6 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
       // OK
     }
   }
-
-  // ======== SharedPreferences: carregar/salvar (se quiser reativar) ========
-
-  // Future<void> _loadHiddenMarkers() async {
-  //   final prefs = await SharedPreferences.getInstance();
-  //   final list = prefs.getStringList(kHiddenKey) ?? const [];
-  //   _hiddenMarkers
-  //     ..clear()
-  //     ..addAll(list);
-  // }
-
-  // Future<void> _saveHiddenMarkers() async {
-  //   final prefs = await SharedPreferences.getInstance();
-  //   await prefs.setStringList(kHiddenKey, _hiddenMarkers.toList());
-  // }
 
   void _listenVinculosAceitos() {
     final guardiaoUid = FirebaseAuth.instance.currentUser?.uid;
@@ -175,7 +159,7 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
       setState(() {
         _markers.clear();
         _loading = false;
-        _statusText = 'Sem ocorrência SOS no momento';
+        _statusText = 'Sem ocorrências abertas no momento';
       });
       return;
     }
@@ -234,15 +218,6 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
     });
   }
 
-  // Ocultar um marcador da visualização (persiste se reativar o SharedPreferences)
-  // void _hideMarker(String ocorrenciaId) async {
-  //   setState(() {
-  //     _hiddenMarkers.add(ocorrenciaId);
-  //   });
-  //   await _saveHiddenMarkers();
-  //   _rebuildMarkersFromCache();
-  // }
-
   void _openMarkerActions({
     required String ocorrenciaId,
     required String title,
@@ -280,27 +255,12 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                ListTile(
-                  leading: const Icon(
-                    Icons.visibility_off,
-                    color: AppColors.primaryMedium,
+                const Text(
+                  'Nenhuma ação disponível.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color.fromARGB(255, 120, 96, 102),
                   ),
-                  title: const Text('Excluir da visualização'),
-                  subtitle: const Text(
-                    'Oculta este alfinete do mapa (não apaga do sistema)',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  onTap: () async {
-                    Navigator.of(ctx).pop();
-                    // _hideMarker(ocorrenciaId);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Ocorrência ocultada da visualização.'),
-                        ),
-                      );
-                    }
-                  },
                 ),
               ],
             ),
@@ -312,7 +272,7 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
 
   void _rebuildMarkersFromCache() {
     final markers = <Marker>{};
-    int countAbertos = 0;
+    int countAbertosNaoSos = 0;
 
     _hiddenMarkers.removeWhere((id) => !_ocorrenciasAbertas.containsKey(id));
 
@@ -369,12 +329,18 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
       }
       final ownerName = _userNames[ownerUid] ?? ownerUid;
 
-      // Marcadores em tom "rosa" para SOS aberto e azul-claro para finalizado
-      final hue = status == 'finalizado'
-          ? BitmapDescriptor.hueAzure
-          : HSVColor.fromColor(AppColors.primary).hue;
+     // Cor diferenciada para ocorrências não-SOS
+      final statusLower = status.toLowerCase();
+      final isNonSos = tipo.toLowerCase() != 'sos';
+      final hue = statusLower == 'finalizado'
+          ? BitmapDescriptor.hueGreen
+          : (isNonSos
+              ? BitmapDescriptor.hueYellow
+              : BitmapDescriptor.hueRed);
 
-      if (status != 'finalizado') countAbertos++;
+      if (statusLower != 'finalizado' && isNonSos) {
+        countAbertosNaoSos++;
+      }
 
       final title =
           '$tipo ${gravidade.isNotEmpty ? "($gravidade)" : ""}'.trim();
@@ -411,9 +377,9 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
       _markers
         ..clear()
         ..addAll(markers);
-      _statusText = countAbertos == 0
-          ? 'Sem ocorrência SOS no momento'
-          : 'SOS abertos: $countAbertos';
+      _statusText = countAbertosNaoSos == 0
+          ? 'Sem ocorrências abertas no momento'
+          : 'Ocorrências abertas: $countAbertosNaoSos';
     });
 
     if (_map != null && markers.isNotEmpty) {
@@ -463,7 +429,7 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
         backgroundColor: const Color.fromARGB(0, 0, 0, 0),
         iconTheme: const IconThemeData(color: Color.fromARGB(255, 44, 44, 44)),
         title: const Text(
-          'Vítimas com SOS aberto',
+          'Vítimas com SOS ou ocorrências abertas',
           style: TextStyle(
             color: Color.fromARGB(255, 255, 0, 0),
             fontWeight: FontWeight.w600,
@@ -547,10 +513,19 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
                             Text(
                               _markers.isEmpty
                                   ? 'Nenhum SOS ativo das vítimas que você acompanha.'
-                                  : 'Visualize no mapa as vítimas com SOS aberto em tempo real.',
+                                  : 'Visualize no mapa as vítimas com SOS ou ocorrências abertas em tempo real.',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Em caso de preocupação com seu(s) protegido(s), acione as autoridades competentes. NÃO VÁ AO LOCAL, NEM TOME MEDIDAS POR CONTA PRÓPRIA PARA SUA SEGURANÇA!',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color.fromARGB(255, 120, 40, 40),
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
