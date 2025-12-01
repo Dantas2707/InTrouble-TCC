@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:crud/theme/app_colors.dart';
+import 'package:intl/intl.dart';
 
 class TelaDetalheOcorrenciaGuardiao extends StatelessWidget {
   final String ocorrenciaId;
@@ -12,6 +13,12 @@ class TelaDetalheOcorrenciaGuardiao extends StatelessWidget {
     required this.ocorrenciaId,
     required this.dadosOcorrencia,
   });
+
+  // Ajuste: formatando data de criação sem milissegundos
+  String _formatarDataHora(DateTime? data) {
+    if (data == null) return 'Data indisponível';
+    return DateFormat('dd/MM/yyyy HH:mm:ss').format(data);
+  }
 
   // Abre URL (foto, áudio, vídeo, PDF etc.) no app externo / navegador
   Future<void> _abrirUrl(String url) async {
@@ -176,7 +183,7 @@ class TelaDetalheOcorrenciaGuardiao extends StatelessWidget {
                             Text('Gravidade: $gravidade'),
                             Text('Status: $status'),
                             if (criadoEm != null)
-                              Text('Criado em: $criadoEm'),
+                              Text('Criado em: ${_formatarDataHora(criadoEm)}'),
                             const SizedBox(height: 12),
                             if (relato.isNotEmpty) ...[
                               const Text(
@@ -334,7 +341,7 @@ class TelaDetalheOcorrenciaGuardiao extends StatelessWidget {
                               'Novo relato: $novoRelato',
                             ),
                           if (criadoEmHist != null)
-                            Text('Em: $criadoEmHist'),
+                            Text('Em: ${_formatarDataHora(criadoEmHist)}'),
 
                           // ====== ANEXOS ESPECÍFICOS DESTE ITEM DO HISTÓRICO ======
                           if (anexosHistorico.isNotEmpty) ...[

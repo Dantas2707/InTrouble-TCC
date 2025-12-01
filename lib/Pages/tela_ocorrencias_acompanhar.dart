@@ -180,6 +180,7 @@ class _TelaOcorrenciasAcompanharState
                 const SizedBox(height: 16),
 
                 // Lista de ocorrências
+                 // Ajuste: Expanded garante altura finita para a lista rolável
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
                     stream: stream,
@@ -205,7 +206,16 @@ class _TelaOcorrenciasAcompanharState
                         );
                       }
 
-                      final docs = snap.data?.docs ?? [];
+                      if (!snap.hasData) {
+                        // Ajuste: evita usar "!" quando os dados ainda não chegaram
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: kRosaMedio,
+                          ),
+                        );
+                      }
+
+                      final docs = snap.data!.docs;
 
                       if (docs.isEmpty) {
                         return Center(
@@ -237,7 +247,8 @@ class _TelaOcorrenciasAcompanharState
                         separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final doc = docs[index];
-                          final data = doc.data() as Map<String, dynamic>;
+                           final data =
+                              (doc.data() as Map<String, dynamic>? ?? {});
 
                           final tipo =
                               (data['tipoOcorrencia'] ?? '').toString();
@@ -247,7 +258,8 @@ class _TelaOcorrenciasAcompanharState
                           final criadoEm =
                               (data['criadoEm'] as Timestamp?)?.toDate();
                           final ownerUid =
-                              (data['ownerUid'] ?? '').toString();
+                              (data['id_usuario'] ?? data['ownerUid'] ?? '')
+                                  .toString();
 
                           return FutureBuilder<DocumentSnapshot>(
                             future: ownerUid.isNotEmpty
@@ -257,6 +269,23 @@ class _TelaOcorrenciasAcompanharState
                                     .get()
                                 : Future.value(null),
                             builder: (context, userSnap) {
+                              if (userSnap.connectionState ==
+                                  ConnectionState.waiting) {
+                                // Ajuste: evita usar dados enquanto o Future não concluiu
+                                return const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(12.0),
+                                    child: CircularProgressIndicator(
+                                      color: kRosaMedio,
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              if (userSnap.hasError) {
+                                return const SizedBox();
+                              }
                               String nomeVitima = '';
 
                               if (userSnap.hasData &&
@@ -296,119 +325,124 @@ class _TelaOcorrenciasAcompanharState
                                       ),
                                     ],
                                   ),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      // Barrinha colorida do status
-                                      Container(
-                                        width: 6,
-                                        decoration: BoxDecoration(
-                                          color: statusColor,
-                                          borderRadius: const BorderRadius.only(
-                                            topLeft: Radius.circular(18),
-                                            bottomLeft: Radius.circular(18),
-                                          ),
+                                  child: IntrinsicHeight(
+                                    // Ajuste: IntrinsicHeight evita altura infinita quando a Row está em listas
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        // Barrinha colorida do status
+                                        Container(
+                                          width: 6,
+                                          decoration: BoxDecoration(
+                                            color: statusColor,
+                                            borderRadius: const BorderRadius.only(
+                                              topLeft: Radius.circular(18),
+                                              bottomLeft: Radius.circular(18),
+                                            ),
                                         ),
                                       ),
                                       Expanded(
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                            vertical: 12,
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              // Tipo de ocorrência + chip de status
-                                              Row(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Expanded(
-                                                    child: Text(
-                                                      tipo.isEmpty
-                                                          ? 'Ocorrência sem tipo'
-                                                          : tipo,
-                                                      style: const TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                        fontSize: 15,
-                                                        color: Color.fromARGB(
-                                                            255, 82, 60, 66),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 12,
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                // Tipo de ocorrência + chip de status
+                                                Row(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        tipo.isEmpty
+                                                            ? 'Ocorrência sem tipo'
+                                                            : tipo,
+                                                        style: const TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          fontSize: 15,
+                                                          color: Color.fromARGB(
+                                                              255, 82, 60, 66),
+                                                        ),
                                                       ),
                                                     ),
-                                                  ),
                                                   const SizedBox(width: 8),
-                                                  Chip(
-                                                    label: Text(
-                                                      _statusLabel(status),
+                                                    Chip(
+                                                      label: Text(
+                                                        _statusLabel(status),
+                                                      ),
+                                                      labelStyle:
+                                                          const TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                      backgroundColor:
+                                                          statusColor
+                                                              .withOpacity(0.3),
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                      materialTapTargetSize:
+                                                          MaterialTapTargetSize
+                                                              .shrinkWrap,
                                                     ),
-                                                    labelStyle:
-                                                        const TextStyle(
-                                                      fontSize: 11,
+                                                    ],
+                                                ),
+                                                const SizedBox(height: 6),
+                                                if (nomeVitima.isNotEmpty)
+                                                  Text(
+                                                    'Vítima: $nomeVitima',
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
                                                       fontWeight:
                                                           FontWeight.w600,
-                                                    ),
-                                                    backgroundColor:
-                                                        statusColor
-                                                            .withOpacity(0.3),
-                                                    visualDensity:
-                                                        VisualDensity.compact,
-                                                    materialTapTargetSize:
-                                                        MaterialTapTargetSize
-                                                            .shrinkWrap,
+                                                      color: Color.fromARGB(
+                                                          255, 120, 96, 102),
                                                   ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 6),
-                                              if (nomeVitima.isNotEmpty)
+                                                ),
+                                               if (nomeVitima.isNotEmpty)
+                                                  const SizedBox(height: 2),
                                                 Text(
-                                                  'Vítima: $nomeVitima',
+                                                  'Gravidade: $gravidade',
                                                   style: const TextStyle(
                                                     fontSize: 13,
-                                                    fontWeight: FontWeight.w600,
                                                     color: Color.fromARGB(
                                                         255, 120, 96, 102),
                                                   ),
                                                 ),
-                                              if (nomeVitima.isNotEmpty)
-                                                const SizedBox(height: 2),
-                                              Text(
-                                                'Gravidade: $gravidade',
-                                                style: const TextStyle(
-                                                  fontSize: 13,
-                                                  color: Color.fromARGB(
-                                                      255, 120, 96, 102),
-                                                ),
-                                              ),
                                               if (criadoEm != null)
-                                                const SizedBox(height: 2),
-                                              if (criadoEm != null)
-                                                Text(
-                                                  'Criado em: ${_formatDataHora(criadoEm)}',
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Color.fromARGB(
-                                                        255, 140, 114, 120),
+                                                  const SizedBox(height: 2),
+                                                if (criadoEm != null)
+                                                  Text(
+                                                    'Criado em: ${_formatDataHora(criadoEm)}',
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Color.fromARGB(
+                                                          255, 140, 114, 120),
+                                                    ),
                                                   ),
-                                                ),
-                                            ],
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      
                                       const SizedBox(width: 4),
-                                      const Padding(
-                                        padding:
-                                            EdgeInsets.only(right: 8.0),
-                                        child: Icon(
-                                          Icons.chevron_right,
-                                          color: Color.fromARGB(
-                                              255, 140, 114, 120),
+                                        const Padding(
+                                          padding:
+                                              EdgeInsets.only(right: 8.0),
+                                          child: Icon(
+                                            Icons.chevron_right,
+                                            color: Color.fromARGB(
+                                                255, 140, 114, 120),
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               );

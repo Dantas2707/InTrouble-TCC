@@ -13,8 +13,12 @@ android {
     ndkVersion = "27.0.12077973"
 
     compileOptions {
+        // Você já está usando Java 11, pode manter
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+
+        // *** IMPORTANTE: habilita core library desugaring ***
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -23,18 +27,17 @@ android {
 
     defaultConfig {
         applicationId = "com.example.aplicativo"
-        minSdk = flutter.minSdkVersion              // para firebase_auth
-        targetSdk = 35           // pode ser 34, mas já alinhei com 35
+        minSdk = flutter.minSdkVersion
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug") // troque pela sua release se tiver
+            signingConfig = signingConfigs.getByName("debug") // troque pela release se tiver
             isMinifyEnabled = false
             isShrinkResources = false
-            // proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
             signingConfig = signingConfigs.getByName("debug")
@@ -44,4 +47,13 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// *** AQUI É FUNDAMENTAL TER ESSE BLOCO ***
+dependencies {
+    // Outras dependências que você já tiver podem ficar aqui
+    // implementation("org.jetbrains.kotlin:kotlin-stdlib")
+
+    // *** ESTA LINHA É OBRIGATÓRIA PARA O DESUGARING ***
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

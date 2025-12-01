@@ -70,12 +70,14 @@ class FirestoreService {
   // CONSULTAS PARA GUARDIÃO
   // ==============================================================
 
-  /// Ocorrências onde o usuário logado é guardião (id_guardiao é um array de UIDs)
+  /// Ocorrências onde o usuário logado é guardião
   Stream<QuerySnapshot> getOcorrenciasDoGuardiaoStream(
     String guardiaoUid, {
     String? status,
   }) {
-    Query q = ocorrencias.where('id_guardiao', arrayContains: guardiaoUid);
+    // Ajuste: agora buscamos pelo array de guardiões notificados
+    Query q =
+        ocorrencias.where('guardioesNotificados', arrayContains: guardiaoUid);
 
     if (status != null && status.isNotEmpty) {
       q = q.where('status', isEqualTo: status);
@@ -483,18 +485,20 @@ class FirestoreService {
     final List<String> guardioes = List<String>.from(idGuardiao ?? const []);
 
     final Map<String, dynamic> baseData = {
-    'ownerUid': ownerUid,
-    'id_guardiao': guardioes,
-    'status': 'aberto',
-    'gravidade': gravidade,
-    'relato': relato,
-    'textoSocorro': textoSocorro,
-    'tipoOcorrencia': tipo,
-    'criadoEm': FieldValue.serverTimestamp(),
-    'anexosLocais': midiasLocais,
-    'anexos': [],
-    'isSos': sosFlag,
-};
+      'id_usuario': ownerUid,
+      'ownerUid': ownerUid,
+      'id_guardiao': guardioes,
+      'guardioesNotificados': guardioes,
+      'status': 'aberto',
+      'gravidade': gravidade,
+      'relato': relato,
+      'textoSocorro': textoSocorro,
+      'tipoOcorrencia': tipo,
+      'criadoEm': FieldValue.serverTimestamp(),
+      'anexosLocais': midiasLocais,
+      'anexos': [],
+      'isSos': sosFlag,
+    };
 
 
     if (latEfetiva != null) baseData['latitude'] = latEfetiva;

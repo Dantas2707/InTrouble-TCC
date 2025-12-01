@@ -14,6 +14,72 @@ const kRosaMedio = AppColors.primaryMedium;
 const kRosaSuave = AppColors.primarySoft;
 const kCinzaClaro = AppColors.grayLight;
 
+Future<bool> garantirPermissaoLocalizacao(BuildContext context) async {
+  final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+  if (!serviceEnabled) {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ative a localização'),
+        content: const Text(
+          'Para usar o SOS, é necessário que o GPS esteja ativo. Ative a localização nas configurações rápidas do seu aparelho.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Entendi'),
+          ),
+        ],
+      ),
+    );
+    return false;
+  }
+
+  var permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+  }
+
+  if (permission == LocationPermission.denied) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Para usar o SOS, autorize o acesso à localização nas permissões do aplicativo.',
+        ),
+      ),
+    );
+    return false;
+  }
+
+  if (permission == LocationPermission.deniedForever) {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Permissão de localização necessária'),
+        content: const Text(
+          'Você negou a permissão de localização para o aplicativo.\n\nPara usar o SOS, vá em:\nConfigurações do celular > Aplicativos > [nome do app] > Permissões\ne ative a opção "Localização".',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await Geolocator.openAppSettings();
+              if (ctx.mounted) Navigator.of(ctx).pop();
+            },
+            child: const Text('Abrir configurações'),
+          ),
+        ],
+      ),
+    );
+    return false;
+  }
+
+  return permission == LocationPermission.always ||
+      permission == LocationPermission.whileInUse;
+}
 
 class TelaVitimaSOS extends StatefulWidget {
   const TelaVitimaSOS({Key? key}) : super(key: key);
@@ -363,11 +429,31 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
       } else {
         // === ACIONAR SOS ===
 
-        // 1) Posição atual (pode pedir permissão de localização)
-        final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-        );
+        final ok = await garantirPermissaoLocalizacao(context);
+        if (!ok) return;
 
+        // 1) Posição atual (pode pedir permissão de localização)
+        late final Position pos;
+        try {
+          pos = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+          );
+        } on PermissionDeniedException catch (e) {
+          debugPrint('Permissão de localização negada durante o SOS: $e');
+          return;
+        } catch (e) {
+          debugPrint('Erro ao obter localização para SOS: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Não foi possível obter sua localização. Verifique o GPS e tente novamente.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
         // 2) Buscar nome do usuário (só para salvar/telemetria)
         String nomeUsuario = 'Usuário';
         try {
@@ -428,7 +514,11 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro: $e')),
+          const SnackBar(
+            content: Text(
+              'Não foi possível completar a ação do SOS. Tente novamente em instantes.',
+            ),
+          ),
         );
       }
     } finally {

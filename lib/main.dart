@@ -5,10 +5,49 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:crud/services/sos_app_watcher.dart';
-
-// ====== PALETA GLOBAL ======
 import 'package:crud/theme/app_colors.dart';
+
+/// Plugin global para exibir notificações locais.
+final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+/// Evita reinicializações repetidas do plugin/canal, inclusive em isolates
+/// de background.
+bool _areLocalNotificationsInitialized = false;
+
+const String _sosChannelId = 'sos_channel';
+const String _sosChannelName = 'Alertas de Emergência';
+const String _sosChannelDescription = 'Canal para alertas SOS de vítimas';
+
+/// Canal específico para alertas de SOS.
+const AndroidNotificationChannel _sosChannel = AndroidNotificationChannel(
+  _sosChannelId, // id
+  _sosChannelName, // name
+  description: _sosChannelDescription,
+  importance: Importance.max,
+  playSound: true,
+  sound: RawResourceAndroidNotificationSound('sos_alarm'),
+);
+
+/// Handler chamado quando uma mensagem push chega com o app em background ou
+/// terminado. É obrigatório estar em nível superior e anotado como entry-point.
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Necessário para que o Firebase funcione no isolate de background.
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Garante que o canal de notificação existe antes de tocar o alarme.
+  await _initLocalNotifications();
+
+  if (message.data['tipo'] == 'SOS') {
+    await _mostrarAlertaSOS(message);
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,10 +63,86 @@ Future<void> main() async {
     print("Erro ao inicializar o Firebase: $e");
   }
 
+  // Registra o handler global para receber mensagens em background/terminado.
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Cria o canal de notificação para SOS (Android) antes do runApp.
+  // O arquivo de som customizado deve estar em
+  // android/app/src/main/res/raw/sos_alarm.mp3
+  await _initLocalNotifications();
+
+  // Configura os listeners do Firebase Cloud Messaging.
+  await setupFirebaseMessaging();
+
   // Inicia o coordenador global que observa login e SOS "aberto"
   SosAppWatcher.instance.start();
 
   runApp(const MyApp());
+}
+
+/// Inicializa o plugin de notificações locais e cria o canal "sos_channel".
+Future<void> _initLocalNotifications() async {
+  if (_areLocalNotificationsInitialized) return;
+
+  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const initSettings = InitializationSettings(
+    android: androidSettings,
+  );
+
+  await _flutterLocalNotificationsPlugin.initialize(initSettings);
+
+  final androidPlugin = _flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+  await androidPlugin?.createNotificationChannel(_sosChannel);
+
+  _areLocalNotificationsInitialized = true;
+}
+
+/// Configura os listeners do Firebase Messaging para receber push.
+Future<void> setupFirebaseMessaging() async {
+  // (Opcional) solicita permissões para receber notificações.
+  await FirebaseMessaging.instance.requestPermission();
+
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    final tipo = message.data['tipo'];
+
+    // Se for um alerta SOS, mostra notificação com alarme forte.
+    if (tipo == 'SOS') {
+      _mostrarAlertaSOS(message);
+    }
+    // Outros tipos podem ser tratados aqui futuramente (ex.: notificações comuns).
+  });
+
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    final idOcorrencia = message.data['id_ocorrencia'];
+    // TODO: Navegar para a tela de detalhes da ocorrência usando o ID acima.
+  });
+}
+
+/// Exibe a notificação local de SOS com som de alarme e prioridade máxima.
+Future<void> _mostrarAlertaSOS(RemoteMessage message) async {
+  const androidDetails = AndroidNotificationDetails(
+    _sosChannelId,
+    _sosChannelName,
+    channelDescription: _sosChannelDescription,
+    importance: Importance.max,
+    priority: Priority.high,
+    playSound: true,
+    sound: RawResourceAndroidNotificationSound('sos_alarm'),
+    fullScreenIntent: true,
+  );
+
+  const notificationDetails = NotificationDetails(android: androidDetails);
+
+  await _flutterLocalNotificationsPlugin.show(
+    // Utiliza um ID fixo ou gere um aleatório se preferir.
+    0,
+    '⚠️ SOS - Pedido de ajuda',
+    'Atenção! A vítima acionou o SOS, verifique imediatamente.',
+    notificationDetails,
+    payload: message.data['id_ocorrencia'],
+  );
 }
 
 class MyApp extends StatelessWidget {
