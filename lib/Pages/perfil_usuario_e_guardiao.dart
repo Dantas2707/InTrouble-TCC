@@ -122,7 +122,6 @@ class _PerfilTab extends StatefulWidget {
 class _PerfilTabState extends State<_PerfilTab> {
   final _nome = TextEditingController();
   final _email = TextEditingController();
-  final _cpf = TextEditingController();
   final _tel = TextEditingController();
   final _nasc = TextEditingController();
   String? _sexo;
@@ -155,7 +154,6 @@ class _PerfilTabState extends State<_PerfilTab> {
       final data = doc.data() as Map<String, dynamic>;
       _nome.text = (data['nome'] ?? '').toString().trim();
       _email.text = (data['email'] ?? _user?.email ?? '').toString().trim();
-      _cpf.text = _maskCPF((data['cpf'] ?? '').toString());
       _tel.text = _maskPhone((data['numerotelefone'] ?? '').toString());
       final dn = data['dataNasc'];
       if (dn is Timestamp) {
@@ -169,12 +167,6 @@ class _PerfilTabState extends State<_PerfilTab> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  String _maskCPF(String raw) {
-    final d = raw.replaceAll(RegExp(r'\D'), '');
-    if (d.length != 11) return raw;
-    return '${d.substring(0, 3)}.${d.substring(3, 6)}.${d.substring(6, 9)}-${d.substring(9)}';
   }
 
   String _maskPhone(String raw) {
@@ -380,13 +372,6 @@ class _PerfilTabState extends State<_PerfilTab> {
                 icon: Icons.alternate_email,
                 label: 'E-mail',
                 value: _email.text.isEmpty ? '—' : _email.text,
-                copyable: true,
-                accent: _PerfilGuardiaoScreenState._colD9B4BB,
-              ),
-              _InfoTile(
-                icon: Icons.perm_identity,
-                label: 'CPF',
-                value: _cpf.text.isEmpty ? '—' : _cpf.text,
                 copyable: true,
                 accent: _PerfilGuardiaoScreenState._colD9B4BB,
               ),

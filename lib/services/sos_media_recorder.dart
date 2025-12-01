@@ -51,6 +51,7 @@ class SosMediaRecorder {
   final _recorder = AudioRecorder();
   CameraController? _camera;
   Timer? _photoTimer;
+  Timer? _audioLimitTimer;
 
   final List<File> _photos = [];
   File? _audioFile;
@@ -58,7 +59,7 @@ class SosMediaRecorder {
 
   // ====== PUBLIC API ======
 
-  Future<void> start() async {
+  Future<void> start({Future<void> Function()? onMaxDurationReached}) async {
     if (_started) return;
     _started = true;
 
@@ -73,7 +74,7 @@ class SosMediaRecorder {
     _photoTimer = Timer.periodic(photoInterval, (_) => _takePhoto());
 
     // 4) Gravar áudio por até audioDuration
-    await _recordAudioLimited();
+    await _recordAudioLimited(onMaxDurationReached: onMaxDurationReached);
   }
 
   /// Para tudo e faz upload para o Storage, registrando referências no Firestore.
@@ -82,8 +83,9 @@ class SosMediaRecorder {
     required String ocorrenciaId,
     required String ownerUid,
   }) async {
-    // Parar timers, câmera e gravação
-    await stop();
+   // Parar timers, câmera e gravação garantindo o arquivo de áudio
+    final File? audio = await stop();
+
 
     // Upload: sos/{uid}/{ocorrenciaId}/photos/ e /audio/
     final storage = FirebaseStorage.instance;
@@ -109,12 +111,13 @@ class SosMediaRecorder {
     }
 
     final List<String> audioUrls = [];
-    if (_audioFile != null && _audioFile!.existsSync()) {
-      final name = _audioFile!.path.split('/').last;
+    final File? audioFile = audio ?? _audioFile;
+    if (audioFile != null && audioFile.existsSync()) {
+      final name = audioFile.path.split('/').last;
       final ref = storage
           .ref()
           .child('sos/$ownerUid/$ocorrenciaId/audio/$name');
-      await ref.putFile(_audioFile!);
+      await ref.putFile(audioFile);
       final url = await ref.getDownloadURL();
       audioUrls.add(url);
 
@@ -122,9 +125,10 @@ class SosMediaRecorder {
       await FirebaseFirestore.instance
           .collection('ocorrencias')
           .doc(ocorrenciaId)
-          .update({
-        'anexos': FieldValue.arrayUnion([url]),
-      });
+        .update({
+      'anexos': FieldValue.arrayUnion([url]),
+      'audioUrl': url,
+    });
     }
 
     // Limpar buffers locais
@@ -133,21 +137,29 @@ class SosMediaRecorder {
   }
 
   /// Apenas para tudo (sem upload)
-  Future<void> stop() async {
-    if (!_started) return;
+  Future<File?> stop() async {
+    if (!_started && _audioFile != null) return _audioFile;
+
     _started = false;
 
     _photoTimer?.cancel();
     _photoTimer = null;
+    _audioLimitTimer?.cancel();
+    _audioLimitTimer = null;
 
     // Parar áudio
     if (await _recorder.isRecording()) {
-      await _recorder.stop();
+      final path = await _recorder.stop();
+      if (path != null) {
+        _audioFile = File(path);
+      }
     }
 
     // Dispensar câmera
     await _camera?.dispose();
     _camera = null;
+
+    return _audioFile;
   }
 
   // ====== INTERNALS ======
@@ -192,7 +204,9 @@ class SosMediaRecorder {
     _photos.add(out);
   }
 
-  Future<void> _recordAudioLimited() async {
+  Future<void> _recordAudioLimited({
+    Future<void> Function()? onMaxDurationReached,
+  }) async {
     if (await _recorder.isRecording()) return;
 
     final dir = await _sosDir();
@@ -209,10 +223,15 @@ class SosMediaRecorder {
     );
 
     // Para automaticamente após audioDuration
-    Future.delayed(audioDuration, () async {
+    _audioLimitTimer = Timer(audioDuration, () async {
       if (await _recorder.isRecording()) {
         final p = await _recorder.stop();
         _audioFile = p != null ? File(p) : File(path);
+      }
+      
+      // Chama callback para que a tela finalize e envie a mídia
+      if (onMaxDurationReached != null) {
+        await onMaxDurationReached();
       }
     });
   }

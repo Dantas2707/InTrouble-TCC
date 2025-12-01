@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -97,9 +98,14 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
 
   bool _loading = false;
   bool _sosAtivo = false;
+  bool _finalizandoSos = false; // trava para evitar finalizações duplicadas
+
 
   /// ID da ocorrência SOS aberta (para vincular upload e finalizar)
   String? _ocorrenciaId;
+
+  // Timer de segurança para finalizar o SOS caso chegue ao limite de áudio
+  Timer? _autoFinalizacaoTimer;
 
   @override
   void initState() {
@@ -400,116 +406,11 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
       if (uid == null) throw StateError('Usuário não autenticado.');
 
       if (_sosAtivo) {
-        // === FINALIZAR SOS ===
-        final guardioesIds = await _buscarGuardioesAceitosEAtivos(uid);
-        await _tracker.stop(); // Para rastreamento de localização
+       
+        await _finalizarSosComMidia(disparadoAutomatico: false);
 
-        if (_ocorrenciaId != null) {
-          if (_media != null) {
-            await _media!.stopAndUpload(
-              ocorrenciaId: _ocorrenciaId!,
-              ownerUid: uid,
-            );
-          } else {
-            await _media?.stop();
-          }
-
-          await _fs.finalizarOcorrencia(_ocorrenciaId!);
-        } else {
-          await _media?.stop();
-        }
-
-        _enviarEmailsSosFinalizado(guardioesIds);
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('SOS finalizado e mídia enviada.')),
-          );
-        }
       } else {
-        // === ACIONAR SOS ===
-
-        final ok = await garantirPermissaoLocalizacao(context);
-        if (!ok) return;
-
-        // 1) Posição atual (pode pedir permissão de localização)
-        late final Position pos;
-        try {
-          pos = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high,
-          );
-        } on PermissionDeniedException catch (e) {
-          debugPrint('Permissão de localização negada durante o SOS: $e');
-          return;
-        } catch (e) {
-          debugPrint('Erro ao obter localização para SOS: $e');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Não foi possível obter sua localização. Verifique o GPS e tente novamente.',
-                ),
-              ),
-            );
-          }
-          return;
-        }
-        // 2) Buscar nome do usuário (só para salvar/telemetria)
-        String nomeUsuario = 'Usuário';
-        try {
-          final userDoc = await FirebaseFirestore.instance
-              .collection('usuario')
-              .doc(uid)
-              .get();
-          if (userDoc.exists && userDoc.data() != null) {
-            final data = userDoc.data() as Map<String, dynamic>;
-            nomeUsuario = (data['nome'] ?? nomeUsuario).toString();
-          }
-        } catch (e) {
-          debugPrint('Erro ao buscar nome do usuário para SOS: $e');
-        }
-
-        // 3) Buscar IDs dos guardiões aceitos/ativos
-        final guardioesIds = await _buscarGuardioesAceitosEAtivos(uid);
-
-        const textoSocorroPadrao =
-            'Atenção! Estou sob ameaça! Preciso de ajuda imediatamente.';
-        
-        // 4) Abrir ocorrência SOS no Firestore
-        final agora = DateTime.now();
-        final id = await _fs.addOcorrencia(
-          'SOS',
-          'Gravíssima',
-          'SOS acionado pelo usuário $nomeUsuario',
-          textoSocorroPadrao,
-          true, // enviarParaGuardiao (se você usa essa flag em outro lugar)
-          anexosLocais: const [],
-          idGuardiao: guardioesIds,
-          ownerUid: uid,
-          isSos: true,
-          latitudeInicial: pos.latitude,
-          longitudeInicial: pos.longitude,
-          dataHoraAbertura: agora,
-        );
-        _ocorrenciaId = id;
-
-        // 5) Enviar e-mail de SOS para os guardiões
-        _enviarEmailsSosGuardioes(guardioesIds, textoSocorroPadrao);
-
-        // 6) Mídia + rastreamento locais (apenas para evidências)
-        _media ??= await _obterMediaRecorder();
-        await _tracker.start();
-        await _media!.start();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'SOS acionado. Capturando mídia e localização...',
-              ),
-            ),
-          );
-        }
+        await _iniciarSos(uid);
       }
     } catch (e) {
       if (mounted) {
@@ -526,10 +427,163 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     }
   }
 
+        Future<void> _iniciarSos(String uid) async {
+
+        // 1) Posição atual (pode pedir permissão de localização)
+       final ok = await garantirPermissaoLocalizacao(context);
+       if (!ok) return;
+
+      // 1) Posição atual (pode pedir permissão de localização)
+    late final Position pos;
+    try {
+      pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+    } on PermissionDeniedException catch (e) {
+      debugPrint('Permissão de localização negada durante o SOS: $e');
+      return;
+    } catch (e) {
+      debugPrint('Erro ao obter localização para SOS: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não foi possível obter sua localização. Verifique o GPS e tente novamente.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    // 2) Buscar nome do usuário (só para salvar/telemetria)
+    String nomeUsuario = 'Usuário';
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('usuario')
+          .doc(uid)
+          .get();
+      if (userDoc.exists && userDoc.data() != null) {
+        final data = userDoc.data() as Map<String, dynamic>;
+        nomeUsuario = (data['nome'] ?? nomeUsuario).toString();
+      }
+    } catch (e) {
+      debugPrint('Erro ao buscar nome do usuário para SOS: $e');
+    }
+
+    // 3) Buscar IDs dos guardiões aceitos/ativos
+    final guardioesIds = await _buscarGuardioesAceitosEAtivos(uid);
+
+    const textoSocorroPadrao =
+        'Atenção! Estou sob ameaça! Preciso de ajuda imediatamente.';
+
+    // 4) Abrir ocorrência SOS no Firestore
+    final agora = DateTime.now();
+    final id = await _fs.addOcorrencia(
+      'SOS',
+      'Gravíssima',
+      'SOS acionado pelo usuário $nomeUsuario',
+      textoSocorroPadrao,
+      true, // enviarParaGuardiao (se você usa essa flag em outro lugar)
+      anexosLocais: const [],
+      idGuardiao: guardioesIds,
+      ownerUid: uid,
+      isSos: true,
+      latitudeInicial: pos.latitude,
+      longitudeInicial: pos.longitude,
+      dataHoraAbertura: agora,
+    );
+    _ocorrenciaId = id;
+
+    // 5) Enviar e-mail de SOS para os guardiões
+    _enviarEmailsSosGuardioes(guardioesIds, textoSocorroPadrao);
+
+    // 6) Mídia + rastreamento locais (apenas para evidências)
+    _media ??= await _obterMediaRecorder();
+    await _tracker.start();
+    await _media!.start(
+      onMaxDurationReached: () => _finalizarSosComMidia(disparadoAutomatico: true),
+    );
+
+    // 7) Fallback adicional: agenda finalização mesmo se callback não for chamado
+    _autoFinalizacaoTimer?.cancel();
+    _autoFinalizacaoTimer = Timer(
+      _media!.audioDuration,
+      () => _finalizarSosComMidia(disparadoAutomatico: true),
+    );
+        
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'SOS acionado. Capturando mídia e localização...',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _finalizarSosComMidia({required bool disparadoAutomatico}) async {
+    // Finalização única do SOS que sempre envia o áudio gravado
+    if (_finalizandoSos) return;
+    _finalizandoSos = true;
+
+    try {
+      _autoFinalizacaoTimer?.cancel();
+      await _tracker.stop();
+
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        await _media?.stop();
+        return;
+      }
+
+      if (_ocorrenciaId != null) {
+        await _media?.stopAndUpload(
+          ocorrenciaId: _ocorrenciaId!,
+          ownerUid: uid,
+        );
+        
+        await _fs.finalizarOcorrencia(_ocorrenciaId!); 
+
+        final guardioesIds = await _buscarGuardioesAceitosEAtivos(uid);
+        _enviarEmailsSosFinalizado(guardioesIds);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                disparadoAutomatico
+                    ? 'Tempo máximo atingido. SOS finalizado e mídia enviada.'
+                    : 'SOS finalizado e mídia enviada.',
+              ),
+            ),
+          );
+        } else {
+          await _media?.stop();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Erro ao finalizar SOS: ${e.toString()}',
+            ),
+          ),
+        );
+      }
+    } finally {
+      _finalizandoSos = false;
+    }
+  }
+
   @override
   void dispose() {
     _tracker.stop();
     _media?.stop();
+    _autoFinalizacaoTimer?.cancel();
     super.dispose();
   }
 
