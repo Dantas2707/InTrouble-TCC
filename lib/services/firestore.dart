@@ -1,4 +1,5 @@
 // lib/services/firestore.dart
+import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,15 +11,15 @@ class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // Coleções principais
-  final CollectionReference tipoOcorrencia =
+  final CollectionReference<Map<String, dynamic>> tipoOcorrencia =
       FirebaseFirestore.instance.collection('tipoOcorrencia');
-  final CollectionReference usuario =
+  final CollectionReference<Map<String, dynamic>> usuario =
       FirebaseFirestore.instance.collection('usuario');
-  final CollectionReference ocorrencias =
+  final CollectionReference<Map<String, dynamic>> ocorrencias =
       FirebaseFirestore.instance.collection('ocorrencias');
-  final CollectionReference guardioes =
+ final CollectionReference<Map<String, dynamic>> guardioes =
       FirebaseFirestore.instance.collection('guardiões');
-  final CollectionReference textosEmails =
+  final CollectionReference<Map<String, dynamic>> textosEmails =
       FirebaseFirestore.instance.collection('textosEmails');
 
   // ==============================================================
@@ -71,19 +72,89 @@ class FirestoreService {
   // ==============================================================
 
   /// Ocorrências onde o usuário logado é guardião
-  Stream<QuerySnapshot> getOcorrenciasDoGuardiaoStream(
+  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      getOcorrenciasDoGuardiaoStream(
     String guardiaoUid, {
     String? status,
   }) {
-    // Ajuste: agora buscamos pelo array de guardiões notificados
-    Query q =
-        ocorrencias.where('guardioesNotificados', arrayContains: guardiaoUid);
+    // SOS usa id_guardiao; normal usa guardioesNotificados (regra de separação)
+    Query<Map<String, dynamic>> sosQuery = ocorrencias
+        .where('isSos', isEqualTo: true)
+        .where('id_guardiao', arrayContains: guardiaoUid);
+
+    Query<Map<String, dynamic>> normalQuery = ocorrencias
+        .where('isSos', isEqualTo: false)
+        .where('guardioesNotificados', arrayContains: guardiaoUid);
 
     if (status != null && status.isNotEmpty) {
-      q = q.where('status', isEqualTo: status);
+      sosQuery = sosQuery.where('status', isEqualTo: status);
+      normalQuery = normalQuery.where('status', isEqualTo: status);
     }
 
-    return q.orderBy('criadoEm', descending: true).snapshots();
+    final sosStream = sosQuery
+        .orderBy('criadoEm', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs);
+
+    final normalStream = normalQuery
+        .orderBy('criadoEm', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs);
+
+    final controller = StreamController<
+        List<QueryDocumentSnapshot<Map<String, dynamic>>>>();
+
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> sosDocs = const [];
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> normalDocs = const [];
+
+    Timestamp _criadoEm(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+      return (doc.data()['criadoEm'] as Timestamp?) ??
+          Timestamp.fromMillisecondsSinceEpoch(0);
+    }
+
+    void emitCombined() {
+      final mergedMap = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+      for (final doc in sosDocs) {
+        mergedMap[doc.id] = doc;
+      }
+      for (final doc in normalDocs) {
+        mergedMap[doc.id] = doc;
+      }
+
+      final merged = mergedMap.values.toList()
+        ..sort((a, b) => _criadoEm(b).compareTo(_criadoEm(a)));
+
+      controller.add(merged);
+    }
+
+    late final StreamSubscription<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+        sosSub;
+    late final StreamSubscription<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+        normalSub;
+
+    sosSub = sosStream.listen(
+      (docs) {
+        sosDocs = docs;
+        emitCombined();
+      },
+      onError: controller.addError,
+    );
+
+    normalSub = normalStream.listen(
+      (docs) {
+        normalDocs = docs;
+        emitCombined();
+      },
+      onError: controller.addError,
+    );
+
+    controller.onCancel = () async {
+      await sosSub.cancel();
+      await normalSub.cancel();
+      await controller.close();
+    };
+
+    return controller.stream;
   }
 
   // ==============================================================
@@ -487,8 +558,6 @@ class FirestoreService {
     final Map<String, dynamic> baseData = {
       'id_usuario': ownerUid,
       'ownerUid': ownerUid,
-      'id_guardiao': guardioes,
-      'guardioesNotificados': guardioes,
       'status': 'aberto',
       'gravidade': gravidade,
       'relato': relato,
@@ -499,6 +568,16 @@ class FirestoreService {
       'anexos': [],
       'isSos': sosFlag,
     };
+
+    // Regra: SOS e ocorrência normal não compartilham os mesmos campos de guardião
+    // SOS → id_guardiao | Normal → guardioesNotificados
+    if (sosFlag) {
+      // SOS: somente id_guardiao deve ser populado
+      baseData['id_guardiao'] = guardioes;
+    } else {
+      // Ocorrências normais: somente guardioesNotificados
+      baseData['guardioesNotificados'] = guardioes;
+    }
 
 
     if (latEfetiva != null) baseData['latitude'] = latEfetiva;
@@ -568,6 +647,7 @@ class FirestoreService {
 
     return ocId;
   }
+
 
   /// Atualiza relato e acrescenta/remover anexos **locais**.
   Future<void> editarOcorrenciaLocal(

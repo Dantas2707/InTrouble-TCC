@@ -346,7 +346,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
         false, // enviarParaGuardiao (controle via SMS + idGuardiao)
         anexosLocais: _anexosLocais,
         idGuardiao:
-            _guardioesSelecionados.isEmpty ? [] : _guardioesSelecionados,
+        _guardioesSelecionados.isEmpty ? [] : _guardioesSelecionados,
         ownerUid: user.uid,
         // NOVOS CAMPOS
         isSos: false,

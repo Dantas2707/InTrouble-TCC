@@ -1,3 +1,4 @@
+import 'dart:ui' show DartPluginRegistrant;
 import 'package:crud/Pages/home_page.dart';
 import 'package:crud/Pages/tela_login.dart';
 import 'package:crud/firebase_options.dart';
@@ -7,8 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:crud/services/sos_app_watcher.dart';
 import 'package:crud/theme/app_colors.dart';
+import 'package:crud/services/sos_app_watcher.dart';
 
 /// Plugin global para exibir notificações locais.
 final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
@@ -29,7 +30,11 @@ const AndroidNotificationChannel _sosChannel = AndroidNotificationChannel(
   description: _sosChannelDescription,
   importance: Importance.max,
   playSound: true,
+  // Usa o som customizado em android/app/src/main/res/raw/sos_alarm.wav
+  // Caso o app já tenha sido instalado sem esse som, desinstale/reinstale
+  // para o canal ser recriado com o áudio correto.
   sound: RawResourceAndroidNotificationSound('sos_alarm'),
+  audioAttributesUsage: AudioAttributesUsage.alarm,
 );
 
 /// Handler chamado quando uma mensagem push chega com o app em background ou
@@ -40,6 +45,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Registra os plugins (como flutter_local_notifications) no isolate
+  // de background. Sem isso, o alarme pode não tocar quando o app
+  // estiver fechado.
+  DartPluginRegistrant.ensureInitialized();
 
   // Garante que o canal de notificação existe antes de tocar o alarme.
   await _initLocalNotifications();
@@ -130,6 +140,9 @@ Future<void> _mostrarAlertaSOS(RemoteMessage message) async {
     priority: Priority.high,
     playSound: true,
     sound: RawResourceAndroidNotificationSound('sos_alarm'),
+    audioAttributesUsage: AudioAttributesUsage.alarm,
+    enableVibration: true,
+    category: AndroidNotificationCategory.call,
     fullScreenIntent: true,
   );
 

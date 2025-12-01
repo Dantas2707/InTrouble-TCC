@@ -22,8 +22,9 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
   String? _guardiaoUid;
 
   // Subscrições
-  StreamSubscription<QuerySnapshot>? _vinculosSub;
-  final List<StreamSubscription<QuerySnapshot>> _ocorrenciasSubs = [];
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _vinculosSub;
+  final List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
+      _ocorrenciasSubs = [];
   final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>>
       _ocorrenciasAbertas = {};
 
@@ -169,47 +170,58 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
       final bloco =
           victimIds.sublist(i, (i + chunkSize).clamp(0, victimIds.length));
 
-      final q = FirebaseFirestore.instance
-          .collection('ocorrencias')
-          .where('ownerUid', whereIn: bloco)
-          .where('id_guardiao', arrayContains: guardiaoUid);
+      void attachQuery(Query<Map<String, dynamic>> query) {
+        final sub = query.snapshots().listen((snap) {
+          for (final change in snap.docChanges) {
+            final changeData =
+                change.doc.data() as Map<String, dynamic>? ?? const {};
+            final newStatus = (changeData['status'] ?? 'aberto').toString();
+            final ownerUidSnack =
+                changeData['ownerUid']?.toString() ?? 'desconhecido';
 
-      final sub = q.snapshots().listen((snap) {
-        for (final change in snap.docChanges) {
-          final changeData =
-              change.doc.data() as Map<String, dynamic>? ?? const {};
-          final newStatus = (changeData['status'] ?? 'aberto').toString();
-          final ownerUidSnack =
-              changeData['ownerUid']?.toString() ?? 'desconhecido';
-
-          if (change.type == DocumentChangeType.modified) {
-            final prev =
-                _ocorrenciasAbertas[change.doc.id]?.get('status')?.toString();
-            if (prev != 'finalizado' && newStatus == 'finalizado') {
-              final ownerNameSnack =
-                  _userNames[ownerUidSnack] ?? ownerUidSnack;
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        'A vítima $ownerNameSnack finalizou a ocorrência.'),
-                  ),
-                );
+            if (change.type == DocumentChangeType.modified) {
+              final prev = _ocorrenciasAbertas[change.doc.id]
+                  ?.get('status')
+                  ?.toString();
+              if (prev != 'finalizado' && newStatus == 'finalizado') {
+                final ownerNameSnack =
+                    _userNames[ownerUidSnack] ?? ownerUidSnack;
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                          'A vítima $ownerNameSnack finalizou a ocorrência.'),
+                    ),
+                  );
+                }
               }
-            }
           } else if (change.type == DocumentChangeType.removed) {
-            _ocorrenciasAbertas.remove(change.doc.id);
+              _ocorrenciasAbertas.remove(change.doc.id);
           }
         }
-
         for (final doc in snap.docs) {
-          _ocorrenciasAbertas[doc.id] = doc;
-        }
+            _ocorrenciasAbertas[doc.id] = doc;
+          }
 
-        _rebuildMarkersFromCache();
-      }, onError: (_) {});
+          _rebuildMarkersFromCache();
+        }, onError: (_) {});
 
-      _ocorrenciasSubs.add(sub);
+        _ocorrenciasSubs.add(sub);
+      }
+
+      // Ocorrência normal: guardiões em guardioesNotificados
+      attachQuery(FirebaseFirestore.instance
+          .collection('ocorrencias')
+          .where('ownerUid', whereIn: bloco)
+          .where('isSos', isEqualTo: false)
+          .where('guardioesNotificados', arrayContains: guardiaoUid));
+
+      // SOS: somente id_guardiao deve estar preenchido
+      attachQuery(FirebaseFirestore.instance
+          .collection('ocorrencias')
+          .where('ownerUid', whereIn: bloco)
+          .where('isSos', isEqualTo: true)
+          .where('id_guardiao', arrayContains: guardiaoUid));
     }
 
     setState(() {

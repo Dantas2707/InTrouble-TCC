@@ -182,7 +182,8 @@ class _TelaOcorrenciasAcompanharState
                 // Lista de ocorrências
                  // Ajuste: Expanded garante altura finita para a lista rolável
                 Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
+                  child: StreamBuilder<
+                      List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
                     stream: stream,
                     builder: (context, snap) {
                       if (snap.connectionState == ConnectionState.waiting) {
@@ -206,16 +207,7 @@ class _TelaOcorrenciasAcompanharState
                         );
                       }
 
-                      if (!snap.hasData) {
-                        // Ajuste: evita usar "!" quando os dados ainda não chegaram
-                        return const Center(
-                          child: CircularProgressIndicator(
-                            color: kRosaMedio,
-                          ),
-                        );
-                      }
-
-                      final docs = snap.data!.docs;
+                      final docs = snap.data ?? [];
 
                       if (docs.isEmpty) {
                         return Center(
