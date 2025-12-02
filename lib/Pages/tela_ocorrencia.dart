@@ -387,14 +387,10 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
                     QueryDocumentSnapshot a, QueryDocumentSnapshot b) {
                   final ma = (a.data() as Map<String, dynamic>? ?? const {});
                   final mb = (b.data() as Map<String, dynamic>? ?? const {});
-                  final ta =
-                      (ma['criadoEm'] as Timestamp?) ?? (ma['timestamp'] as Timestamp?);
-                  final tb =
-                      (mb['criadoEm'] as Timestamp?) ?? (mb['timestamp'] as Timestamp?);
-                  final da =
-                      (ta?.toDate()) ?? DateTime.fromMillisecondsSinceEpoch(0);
-                  final db =
-                      (tb?.toDate()) ?? DateTime.fromMillisecondsSinceEpoch(0);
+                  final ta = (ma['criadoEm'] as Timestamp?);
+                  final tb = (mb['criadoEm'] as Timestamp?);
+                  final da = (ta?.toDate()) ?? DateTime.fromMillisecondsSinceEpoch(0);
+                  final db = (tb?.toDate()) ?? DateTime.fromMillisecondsSinceEpoch(0);
                   return db.compareTo(da);
                 }
 
@@ -443,8 +439,7 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
         final gravidade = (data['gravidade'] as String?) ?? '';
         final relato = (data['relato'] as String?) ?? '';
         final status = (data['status'] as String?) ?? '';
-        final createdTs =
-            (data['criadoEm'] as Timestamp?) ?? (data['timestamp'] as Timestamp?);
+        final createdTs = data['criadoEm'] as Timestamp?;
         final dataLocal = createdTs?.toDate();
 
         // Guardiões vinculados a esta ocorrência (para SMS)

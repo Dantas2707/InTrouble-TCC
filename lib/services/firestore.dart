@@ -560,7 +560,7 @@ class FirestoreService {
       'relato': relato,
       'textoSocorro': textoSocorro,
       'tipoOcorrencia': tipo,
-      'criadoEm': FieldValue.serverTimestamp(),
+      'criadoEm': agora,
       'anexosLocais': midiasLocais,
       'anexos': [],
     };
@@ -831,7 +831,6 @@ class FirestoreService {
     await ocorrencias.doc(docId).update({
       'latitude': latitude,
       'longitude': longitude,
-      'timestamp': FieldValue.serverTimestamp(),
     });
   }
 
@@ -843,7 +842,6 @@ class FirestoreService {
     await ocorrencias.doc(docId).update({
       'status': 'finalizado',
       'finalizadoEm': FieldValue.serverTimestamp(),
-      'timestamp': FieldValue.serverTimestamp(),
     });
     return docId;
   }
@@ -852,7 +850,6 @@ class FirestoreService {
     await ocorrencias.doc(ocorrenciaId).update({
       'status': 'finalizado',
       'finalizadoEm': FieldValue.serverTimestamp(),
-      'timestamp': FieldValue.serverTimestamp(),
     });
   }
 
