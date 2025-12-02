@@ -2,18 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'tela_config.dart'; // Caso ainda use em outro lugar
 import 'tela_tipo_ocorrencia.dart';
 import 'tela_login.dart';
-import 'tela_usuario.dart';
 import 'tela_enviar_email.dart';
 import 'tela_textoEmails.dart';
-import 'tela_configuracoes.dart';
-import 'tela_ocorrencia.dart';
-import 'tela_localizacao.dart';
-import 'tela_sos.dart';
-import 'tela_registrar_ocorrencia.dart';
-import 'perfil_usuario_e_guardiao.dart';
 
 class TelaAdminHome extends StatefulWidget {
   const TelaAdminHome({super.key});
@@ -263,106 +255,10 @@ class _TelaAdminHomeState extends State<TelaAdminHome> {
                     _buildCardConfigSos(),
                     const SizedBox(height: 24),
 
-                    // Seção: Usuários e Guardiões
+                    // Seção: Cadastros de ocorrência
                     _buildSectionCard(
-                      titulo: 'Usuários e Guardiões',
+                      titulo: 'Cadastros de tipos de ocorrência',
                       children: [
-                        ListTile(
-                          leading: const Icon(Icons.person_add_alt),
-                          title: const Text('Cadastrar usuário'),
-                          subtitle: const Text('Criar novos perfis de acesso'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const TelaUsuario(),
-                              ),
-                            );
-                          },
-                        ),
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: const Icon(Icons.verified_user_outlined),
-                          title: const Text('Cadastro de Guardião'),
-                          subtitle:
-                              const Text('Gerenciar responsáveis e vínculos'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const PerfilGuardiaoScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Seção: Ocorrências e monitoramento
-                    _buildSectionCard(
-                      titulo: 'Ocorrências e monitoramento',
-                      children: [
-                        ListTile(
-                          leading: const Icon(Icons.flag_outlined),
-                          title: const Text('Registrar ocorrência'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const OcorrenciaPage(),
-                              ),
-                            );
-                          },
-                        ),
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: const Icon(Icons.article_outlined),
-                          title: const Text('Minhas ocorrências'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => OcorrenciasPage(),
-                              ),
-                            );
-                          },
-                        ),
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: const Icon(Icons.location_on_outlined),
-                          title: const Text('Localização da vítima'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => GuardianMapPage(),
-                              ),
-                            );
-                          },
-                        ),
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: const Icon(Icons.warning_amber_rounded),
-                          title: const Text('Simular SOS'),
-                          subtitle: const Text('Fluxo de teste do SOS'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const TelaVitimaSOS(),
-                              ),
-                            );
-                          },
-                        ),
-                        const Divider(height: 1),
                         ListTile(
                           leading: const Icon(Icons.list_alt_outlined),
                           title: const Text('Tipos de ocorrência'),
@@ -387,8 +283,7 @@ class _TelaAdminHomeState extends State<TelaAdminHome> {
                         ListTile(
                           leading: const Icon(Icons.send_outlined),
                           title: const Text('Enviar e-mail'),
-                          subtitle:
-                              const Text('Disparar mensagens para usuários'),
+                          subtitle: const Text('Disparar mensagens para usuários'),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
                             Navigator.push(
@@ -417,28 +312,6 @@ class _TelaAdminHomeState extends State<TelaAdminHome> {
                       ],
                     ),
                     const SizedBox(height: 16),
-
-                    // Seção: Configurações gerais
-                    _buildSectionCard(
-                      titulo: 'Configurações do sistema',
-                      children: [
-                        ListTile(
-                          leading: const Icon(Icons.settings_outlined),
-                          title: const Text('Configurações'),
-                          subtitle: const Text('Ajustes avançados do sistema'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => SettingsMenuScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
 
                     // Botão de Logout
                     SizedBox(
