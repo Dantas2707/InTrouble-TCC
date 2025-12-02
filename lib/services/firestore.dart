@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:crud/utils/telefone_utils.dart';
 import 'package:path/path.dart' as p;
 
 class FirestoreService {
@@ -368,11 +369,14 @@ class FirestoreService {
   // USUÁRIO
   // ==============================================================
   Future<void> addUsuario(String uid, Map<String, dynamic> dadosUsuario) async {
+    final telefoneRaw = (dadosUsuario['numerotelefone'] ?? '').toString();
+    final telefoneNormalizado =
+        TelefoneUtils.normalizarTelefoneBR(telefoneRaw);
+
     await usuario.doc(uid).set({
       'nome': dadosUsuario['nome'],
       'email': dadosUsuario['email'],
-      'cpf': dadosUsuario['cpf'],
-      'numerotelefone': dadosUsuario['numerotelefone'],
+      'numerotelefone': telefoneNormalizado,
       'dataNasc': dadosUsuario['dataNasc'],
       'sexo': dadosUsuario['sexo'],
       'inativar': false,
@@ -389,8 +393,16 @@ class FirestoreService {
 
   Future<void> atualizarUsuario(
       String uid, Map<String, dynamic> dadosUsuario) async {
+    final payload = Map<String, dynamic>.from(dadosUsuario);
+    if (payload.containsKey('numerotelefone')) {
+      final telefoneRaw = (payload['numerotelefone'] ?? '').toString();
+      payload['numerotelefone'] =
+          TelefoneUtils.normalizarTelefoneBR(telefoneRaw);
+    }
+
+
     await usuario.doc(uid).update({
-      ...dadosUsuario,
+      ...payload,
       'timestamp': FieldValue.serverTimestamp(),
     });
   }

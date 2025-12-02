@@ -8,6 +8,10 @@ import 'package:crud/services/sos_location_tracker.dart';
 import 'package:crud/services/sos_media_recorder.dart';
 import 'package:crud/services/enviar_email.dart';
 import 'package:crud/theme/app_colors.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:phone_state/phone_state.dart';
 
 const kRosaMuitoClaro = AppColors.primaryLight;
 const kRosaClaro = AppColors.primary;
@@ -96,10 +100,17 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
   // Recorder é opcional e criado conforme config do ADM
   SosMediaRecorder? _media;
 
+  StreamSubscription<PhoneState>? _phoneStateSub;
+  List<Map<String, String>> _filaGuardioes = [];
+  int _indiceGuardiaoAtual = 0;
+  bool _loopLigacoesAtivo = false;
+  bool _chamadaConectada = false;
+  PhoneStateStatus? _ultimoStatusTelefone;
+  DateTime? _ultimaTrocaGuardiao;
+
   bool _loading = false;
   bool _sosAtivo = false;
   bool _finalizandoSos = false; // trava para evitar finalizações duplicadas
-
 
   /// ID da ocorrência SOS aberta (para vincular upload e finalizar)
   String? _ocorrenciaId;
@@ -126,6 +137,7 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
         .limit(1)
         .snapshots()
         .listen((snap) {
+      if (!mounted) return;
       final ativo = snap.docs.isNotEmpty;
       setState(() {
         _sosAtivo = ativo;
@@ -170,8 +182,7 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     return idsSet.toList();
   }
 
-  /// Busca e-mail e nome dos guardiões pelo id.
-   /// Busca e-mail e nome dos guardiões pelo id.
+  /// Busca e-mail, nome e telefone dos guardiões pelo id.
   Future<List<Map<String, String>>> _buscarContatosGuardioes(
       List<String> guardioesIds) async {
     final contatos = <Map<String, String>>[];
@@ -188,9 +199,14 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
         final data = doc.data() as Map<String, dynamic>;
         final email = (data['email'] ?? '').toString().trim();
         final nome = (data['nome'] ?? 'Guardião').toString();
+        final telefone = (data['numerotelefone'] ?? '').toString().trim();
 
-        if (email.isNotEmpty) {
-          contatos.add({'email': email, 'nome': nome});
+        if (email.isNotEmpty || telefone.isNotEmpty) {
+          contatos.add({
+            'email': email,
+            'nome': nome,
+            'telefone': telefone,
+          });
         }
       } catch (e) {
         debugPrint('Erro ao buscar guardião $guardiaoId: $e');
@@ -198,6 +214,92 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     }
 
     return contatos;
+  }
+
+  Future<bool> _garantirPermissaoLigacao() async {
+    final status = await Permission.phone.status;
+
+    if (status.isGranted) return true;
+
+    final novoStatus = await Permission.phone.request();
+
+    if (!novoStatus.isGranted && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Para ligar automaticamente para o guardião, '
+            'permita o acesso ao recurso de telefone nas permissões do app.',
+          ),
+        ),
+      );
+    }
+
+    return novoStatus.isGranted;
+  }
+
+  Future<void> _ligarDiretoParaGuardiaoPrincipal(
+      List<Map<String, String>> contatos) async {
+    if (contatos.isEmpty) return;
+
+    // Garante permissão CALL_PHONE
+    final permitido = await _garantirPermissaoLigacao();
+    if (!permitido) return;
+
+    // Pega o primeiro guardião com telefone cadastrado
+    final contato = contatos.firstWhere(
+      (c) => (c['telefone'] ?? '').trim().isNotEmpty,
+      orElse: () => {},
+    );
+
+    final numero = (contato['telefone'] ?? '').toString().trim();
+
+    if (numero.isEmpty) {
+      debugPrint('Nenhum guardião com telefone cadastrado.');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não foi possível efetuar a ligação: '
+              'nenhum guardião com telefone cadastrado.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      await FlutterPhoneDirectCaller.callNumber(numero);
+    } catch (e) {
+      debugPrint('Erro ao tentar ligar para o guardião $numero: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Ocorreu um erro ao iniciar a ligação para o guardião.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  String normalizarTelefoneBR(String input) {
+    // tira espaços, traços, parênteses etc.
+    var digits = input.replaceAll(RegExp(r'\D'), '');
+
+    // se já vier com 55 + DDD + número
+    if (digits.startsWith('55') && digits.length >= 12) {
+      return '+$digits';
+    }
+
+    // se vier só com DDD+numero (ex: 61984250137)
+    if (digits.length >= 10 && !digits.startsWith('55')) {
+      return '+55$digits';
+    }
+
+    // fallback
+    return '+$digits';
   }
 
   /// Busca o template de e-mail do SOS na coleção `textosEmails`.
@@ -210,7 +312,8 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
 
     try {
       final col = FirebaseFirestore.instance.collection('textosEmails');
-      final query = await col.where('nome', isEqualTo: 'Pedido de socorro').get();
+      final query =
+          await col.where('nome', isEqualTo: 'Pedido de socorro').get();
 
       if (query.docs.isEmpty) {
         return {
@@ -256,6 +359,36 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     }
   }
 
+  Future<void> _ligarParaGuardiaoPrincipal(
+      List<Map<String, String>> contatos) async {
+    if (contatos.isEmpty) return;
+
+    // pega o primeiro com telefone preenchido
+    final contatoComTelefone = contatos.firstWhere(
+      (c) => (c['telefone'] ?? '').isNotEmpty,
+      orElse: () => {},
+    );
+
+    final telefone = (contatoComTelefone['telefone'] ?? '').trim();
+    if (telefone.isEmpty) {
+      debugPrint('Nenhum guardião com telefone cadastrado.');
+      return;
+    }
+
+    final uri = Uri(scheme: 'tel', path: telefone);
+
+    try {
+      final ok = await canLaunchUrl(uri);
+      if (ok) {
+        await launchUrl(uri); // abre o discador já com o número
+      } else {
+        debugPrint('Não foi possível iniciar a chamada para $telefone');
+      }
+    } catch (e) {
+      debugPrint('Erro ao tentar ligar para $telefone: $e');
+    }
+  }
+
   /// Remove as tags HTML para montar um corpo de texto simples.
   String _textoSemHtml(String html) {
     final plain = html.replaceAll(RegExp(r'<[^>]*>'), '');
@@ -272,7 +405,9 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
 
     try {
       final col = FirebaseFirestore.instance.collection('textosEmails');
-      final query = await col.where('nome', isEqualTo: 'Pedido de socorro finalizado').get();
+      final query = await col
+          .where('nome', isEqualTo: 'Pedido de socorro finalizado')
+          .get();
 
       if (query.docs.isEmpty) {
         return {
@@ -396,6 +531,133 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     }
   }
 
+  // =========================================================
+  //          LOOP DE LIGAÇÕES SEQUENCIAIS PARA GUARDIÕES
+  // =========================================================
+
+   Future<void> _iniciarLigacoesSequenciais(
+      List<Map<String, String>> contatos) async {
+    final contatosComTelefone = contatos.where((c) {
+      final tel = (c['telefone'] ?? '').trim();
+      return tel.isNotEmpty;
+    }).toList();
+
+    if (contatosComTelefone.isEmpty) {
+      debugPrint('Nenhum guardião com telefone cadastrado na fila.');
+      return;
+    }
+
+    final permitido = await _garantirPermissaoLigacao();
+    if (!permitido) return;
+
+    _filaGuardioes = contatosComTelefone;
+    _indiceGuardiaoAtual = 0;
+    _loopLigacoesAtivo = true;
+    _ultimaTrocaGuardiao = null;
+    _ultimoStatusTelefone = null;
+
+    await _phoneStateSub?.cancel();
+    _phoneStateSub = PhoneState.stream.listen((event) {
+      final status = event.status;
+      debugPrint(
+        'STATUS LIGACAO: $status | loop=$_loopLigacoesAtivo | '
+        'indice=$_indiceGuardiaoAtual | tamanhoFila=${_filaGuardioes.length}',
+      );
+
+      if (!_loopLigacoesAtivo) return;
+
+      if (status == PhoneStateStatus.CALL_STARTED) {
+        _chamadaConectada = true;
+      }
+
+      if (status == PhoneStateStatus.CALL_ENDED) {
+        final agora = DateTime.now();
+
+        // Evita tratar o mesmo fim de chamada mais de uma vez
+        if (_ultimaTrocaGuardiao != null &&
+            agora.difference(_ultimaTrocaGuardiao!).inMilliseconds < 1500) {
+          debugPrint('CALL_ENDED ignorado (duplicado em menos de 1.5s)');
+          return;
+        }
+
+        _ultimaTrocaGuardiao = agora;
+
+        if (!_sosAtivo) {
+          debugPrint(
+              'CALL_ENDED recebido mas SOS não está mais ativo. Encerrando loop de ligações.');
+          _pararLoopLigacoes();
+          return;
+        }
+
+        _chamarProximoGuardiao();
+      }
+
+      _ultimoStatusTelefone = status;
+    });
+
+    // Dispara a primeira ligação
+    await _chamarGuardiaoAtual();
+  }
+
+    Future<void> _chamarGuardiaoAtual() async {
+    if (!_loopLigacoesAtivo || _filaGuardioes.isEmpty) return;
+
+    final contato = _filaGuardioes[_indiceGuardiaoAtual];
+    final telBruto = (contato['telefone'] ?? '').trim();
+
+    if (telBruto.isEmpty) {
+      debugPrint(
+        'Guardião no índice $_indiceGuardiaoAtual está sem telefone. Indo para o próximo.',
+      );
+      await _chamarProximoGuardiao();
+      return;
+    }
+
+    final numero = normalizarTelefoneBR(telBruto);
+    debugPrint(
+      'Ligando para guardião $_indiceGuardiaoAtual de '
+      '${_filaGuardioes.length} -> $numero',
+    );
+
+    try {
+      await FlutterPhoneDirectCaller.callNumber(numero);
+    } catch (e) {
+      debugPrint('Erro ao tentar ligar para $numero: $e');
+      await _chamarProximoGuardiao();
+    }
+  }
+
+
+    Future<void> _chamarProximoGuardiao() async {
+    if (!_loopLigacoesAtivo || _filaGuardioes.isEmpty) return;
+
+    _indiceGuardiaoAtual = (_indiceGuardiaoAtual + 1) % _filaGuardioes.length;
+    debugPrint(
+      'CALL_ENDED: indo para o próximo guardião. '
+      'Novo índice=$_indiceGuardiaoAtual de ${_filaGuardioes.length}',
+    );
+
+    // Dá um respiro pro Android encerrar de vez a ligação anterior
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (!_loopLigacoesAtivo || !_sosAtivo) {
+      debugPrint(
+        'Loop de ligações cancelado durante o delay. '
+        'Não vou ligar para o próximo.',
+      );
+      return;
+    }
+
+    await _chamarGuardiaoAtual();
+  }
+
+
+  void _pararLoopLigacoes() {
+    debugPrint('Parando loop de ligações e cancelando listener de telefone.');
+    _loopLigacoesAtivo = false;
+    _phoneStateSub?.cancel();
+    _phoneStateSub = null;
+  }
 
   // =========================================================
 
@@ -406,9 +668,7 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
       if (uid == null) throw StateError('Usuário não autenticado.');
 
       if (_sosAtivo) {
-       
         await _finalizarSosComMidia(disparadoAutomatico: false);
-
       } else {
         await _iniciarSos(uid);
       }
@@ -427,13 +687,12 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     }
   }
 
-        Future<void> _iniciarSos(String uid) async {
+  Future<void> _iniciarSos(String uid) async {
+    // 1) Garantir permissão de localização + serviço ligado
+    final ok = await garantirPermissaoLocalizacao(context);
+    if (!ok) return;
 
-        // 1) Posição atual (pode pedir permissão de localização)
-       final ok = await garantirPermissaoLocalizacao(context);
-       if (!ok) return;
-
-      // 1) Posição atual (pode pedir permissão de localização)
+    // 2) Obter posição atual
     late final Position pos;
     try {
       pos = await Geolocator.getCurrentPosition(
@@ -456,13 +715,11 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
       return;
     }
 
-    // 2) Buscar nome do usuário (só para salvar/telemetria)
+    // 3) Buscar nome do usuário (só para salvar/telemetria)
     String nomeUsuario = 'Usuário';
     try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('usuario')
-          .doc(uid)
-          .get();
+      final userDoc =
+          await FirebaseFirestore.instance.collection('usuario').doc(uid).get();
       if (userDoc.exists && userDoc.data() != null) {
         final data = userDoc.data() as Map<String, dynamic>;
         nomeUsuario = (data['nome'] ?? nomeUsuario).toString();
@@ -471,19 +728,22 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
       debugPrint('Erro ao buscar nome do usuário para SOS: $e');
     }
 
-    // 3) Buscar IDs dos guardiões aceitos/ativos
+    // 4) Buscar IDs dos guardiões aceitos/ativos
     final guardioesIds = await _buscarGuardioesAceitosEAtivos(uid);
+
+    // 4.1) Carregar dados completos dos guardiões (email, nome, telefone)
+    final contatosGuardioes = await _buscarContatosGuardioes(guardioesIds);
 
     const textoSocorroPadrao =
         'Atenção! Estou sob ameaça! Preciso de ajuda imediatamente.';
 
-    // 4) Abrir ocorrência SOS no Firestore
+    // 5) Abrir ocorrência SOS no Firestore
     final agora = DateTime.now();
     final id = await _fs.addOcorrencia(
-      'SOS',
-      'Gravíssima',
-      'SOS acionado pelo usuário $nomeUsuario',
-      textoSocorroPadrao,
+      'SOS', // tipoOcorrencia
+      'Gravíssima', // gravidade
+      'SOS acionado pelo usuário $nomeUsuario', // relato
+      textoSocorroPadrao, // texto socorro
       true, // enviarParaGuardiao (se você usa essa flag em outro lugar)
       anexosLocais: const [],
       idGuardiao: guardioesIds,
@@ -494,23 +754,26 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     );
     _ocorrenciaId = id;
 
-    // 5) Enviar e-mail de SOS para os guardiões
+    // 6) Enviar e-mail de SOS para os guardiões
     _enviarEmailsSosGuardioes(guardioesIds, textoSocorroPadrao);
 
-    // 6) Mídia + rastreamento locais (apenas para evidências)
+    // 6.1) Iniciar loop de ligações sequenciais para os guardiões
+    await _iniciarLigacoesSequenciais(contatosGuardioes);
+
+    // 7) Iniciar rastreamento de localização + gravação de mídia
     _media ??= await _obterMediaRecorder();
     await _tracker.start();
     await _media!.start(
-      onMaxDurationReached: () => _finalizarSosComMidia(disparadoAutomatico: true),
+      onMaxDurationReached: () =>
+          _finalizarSosComMidia(disparadoAutomatico: true),
     );
 
-    // 7) Fallback adicional: agenda finalização mesmo se callback não for chamado
+    // 8) Fallback extra: agenda finalização mesmo se callback não disparar
     _autoFinalizacaoTimer?.cancel();
     _autoFinalizacaoTimer = Timer(
       _media!.audioDuration,
       () => _finalizarSosComMidia(disparadoAutomatico: true),
     );
-        
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -526,6 +789,7 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
   Future<void> _finalizarSosComMidia({required bool disparadoAutomatico}) async {
     // Finalização única do SOS que sempre envia o áudio gravado
     if (_finalizandoSos) return;
+    _pararLoopLigacoes();
     _finalizandoSos = true;
 
     try {
@@ -543,8 +807,8 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
           ocorrenciaId: _ocorrenciaId!,
           ownerUid: uid,
         );
-        
-        await _fs.finalizarOcorrencia(_ocorrenciaId!); 
+
+        await _fs.finalizarOcorrencia(_ocorrenciaId!);
 
         final guardioesIds = await _buscarGuardioesAceitosEAtivos(uid);
         _enviarEmailsSosFinalizado(guardioesIds);
@@ -583,6 +847,7 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
     _tracker.stop();
     _media?.stop();
     _autoFinalizacaoTimer?.cancel();
+    _phoneStateSub?.cancel();
     super.dispose();
   }
 
@@ -781,9 +1046,8 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
                         : 'Use este recurso somente em situações reais de risco.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: ativo
-                          ? Colors.red.shade700
-                          : Colors.grey.shade800,
+                      color:
+                          ativo ? Colors.red.shade700 : Colors.grey.shade800,
                       fontSize: 14,
                     ),
                   ),

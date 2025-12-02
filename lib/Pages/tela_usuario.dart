@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:crud/services/firestore.dart';
+import 'package:crud/utils/telefone_utils.dart';
 import 'tela_login.dart';
 import 'tela_validar_email.dart';
 import 'dart:convert';
@@ -161,9 +162,9 @@ class _TelaUsuarioState extends State<TelaUsuario> {
 
       final hashSenha = gerarHashSenha(senhaController.text.trim());
 
-      // 👇 só dígitos do telefone para salvar no Firestore
-      final telefoneDigits =
-          telefoneController.text.replaceAll(RegExp(r'\D'), '');
+     final telefoneRaw = telefoneController.text.trim();
+      final telefoneNormalizado =
+          TelefoneUtils.normalizarTelefoneBR(telefoneRaw);
 
       final authResult = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(
@@ -179,7 +180,7 @@ class _TelaUsuarioState extends State<TelaUsuario> {
       final dadosUsuario = {
         'nome': nomeController.text.trim(),
         'email': emailController.text.trim(),
-        'numerotelefone': telefoneDigits, // 👈 só números
+        'numerotelefone': telefoneNormalizado,
         'dataNasc': dataNasc,
         'sexo': _sexoSelecionado,
         'inativar': false,

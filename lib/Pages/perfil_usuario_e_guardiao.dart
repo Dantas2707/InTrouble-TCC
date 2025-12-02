@@ -4,8 +4,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:crud/services/firestore.dart';
 import 'package:crud/services/enviar_email.dart';
+import 'package:crud/utils/telefone_utils.dart';
 import 'package:crud/theme/app_colors.dart';
 
+String formatTelefoneBr(String? raw) {
+  if (raw == null) return '';
+
+  final digits = raw.replaceAll(RegExp(r'\D'), '');
+  if (digits.isEmpty) return '';
+
+  var normalized = digits;
+  if (normalized.startsWith('55') && normalized.length > 11) {
+    normalized = normalized.substring(2);
+  }
+
+  if (normalized.length == 11) {
+    return '(${normalized.substring(0, 2)}) ${normalized.substring(2, 3)}'
+        '${normalized.substring(3, 7)}-${normalized.substring(7, 11)}';
+  }
+
+  if (normalized.length == 10) {
+    return '(${normalized.substring(0, 2)}) ${normalized.substring(2, 6)}-${normalized.substring(6, 10)}';
+  }
+
+  return raw;
+}
 class PerfilGuardiaoScreen extends StatefulWidget {
   const PerfilGuardiaoScreen({Key? key}) : super(key: key);
 
@@ -154,7 +177,7 @@ class _PerfilTabState extends State<_PerfilTab> {
       final data = doc.data() as Map<String, dynamic>;
       _nome.text = (data['nome'] ?? '').toString().trim();
       _email.text = (data['email'] ?? _user?.email ?? '').toString().trim();
-      _tel.text = _maskPhone((data['numerotelefone'] ?? '').toString());
+      _tel.text = formatTelefoneBr((data['numerotelefone'] ?? '').toString());
       final dn = data['dataNasc'];
       if (dn is Timestamp) {
         _nasc.text = _fmtDate(dn.toDate());
@@ -167,16 +190,6 @@ class _PerfilTabState extends State<_PerfilTab> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  String _maskPhone(String raw) {
-    final d = raw.replaceAll(RegExp(r'\D'), '');
-    if (d.length >= 11) {
-      return '(${d.substring(0, 2)}) ${d.substring(2, 7)}-${d.substring(7, 11)}';
-    } else if (d.length >= 10) {
-      return '(${d.substring(0, 2)}) ${d.substring(2, 6)}-${d.substring(6, 10)}';
-    }
-    return raw;
   }
 
   String _unmaskPhone(String s) {
@@ -205,7 +218,7 @@ class _PerfilTabState extends State<_PerfilTab> {
 
     // Usa o telefone atual já formatado com máscara
     final controller = TextEditingController(
-      text: _maskPhone(_unmaskPhone(_tel.text)),
+      text: formatTelefoneBr(_unmaskPhone(_tel.text)),
     );
 
     String? erroLocal;
@@ -267,15 +280,16 @@ class _PerfilTabState extends State<_PerfilTab> {
     if (resultado == null) return; // usuário cancelou
 
     final digits = resultado;
+    final telefoneNormalizado = TelefoneUtils.normalizarTelefoneBR(digits);
 
     try {
       await FirebaseFirestore.instance
           .collection('usuario')
           .doc(_user!.uid)
-          .update({'numerotelefone': digits});
+          .update({'numerotelefone': telefoneNormalizado});
 
       setState(() {
-        _tel.text = _maskPhone(digits);
+         _tel.text = formatTelefoneBr(digits);
       });
 
       if (!mounted) return;
