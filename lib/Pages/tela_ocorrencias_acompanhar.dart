@@ -250,7 +250,7 @@ class _TelaOcorrenciasAcompanharState
                           final criadoEm =
                               (data['criadoEm'] as Timestamp?)?.toDate();
                           final ownerUid =
-                              (data['id_usuario'] ?? data['ownerUid'] ?? '')
+                              (data['ownerUid'] ?? data['id_usuario'] ?? '')
                                   .toString();
 
                           return FutureBuilder<DocumentSnapshot>(

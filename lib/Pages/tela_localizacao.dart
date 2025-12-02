@@ -213,14 +213,15 @@ class _GuardianMapPageState extends State<GuardianMapPage> {
       attachQuery(FirebaseFirestore.instance
           .collection('ocorrencias')
           .where('ownerUid', whereIn: bloco)
-          .where('isSos', isEqualTo: false)
-          .where('guardioesNotificados', arrayContains: guardiaoUid));
+          .where('gravidade', isNotEqualTo: 'Gravíssima')
+          .where('guardioesNotificados', arrayContains: guardiaoUid)
+          .orderBy('gravidade'));
 
       // SOS: somente id_guardiao deve estar preenchido
       attachQuery(FirebaseFirestore.instance
           .collection('ocorrencias')
           .where('ownerUid', whereIn: bloco)
-          .where('isSos', isEqualTo: true)
+          .where('gravidade', isEqualTo: 'Gravíssima')
           .where('id_guardiao', arrayContains: guardiaoUid));
     }
 

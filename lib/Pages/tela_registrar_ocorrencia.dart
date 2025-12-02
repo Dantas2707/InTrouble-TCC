@@ -336,7 +336,7 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
 
       // ================================
       // Salva a ocorrência no Firestore
-      // (ocorrência NORMAL → isSos: false)
+      // (ocorrência NORMAL)
       // ================================
       await _service.addOcorrencia(
         _tipoSelecionado!,
@@ -348,8 +348,6 @@ class _OcorrenciaPageState extends State<OcorrenciaPage> {
         idGuardiao:
         _guardioesSelecionados.isEmpty ? [] : _guardioesSelecionados,
         ownerUid: user.uid,
-        // NOVOS CAMPOS
-        isSos: false,
         latitudeInicial: latitude,
         longitudeInicial: longitude,
         dataHoraAbertura: agora,

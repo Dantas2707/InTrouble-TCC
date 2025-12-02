@@ -79,11 +79,11 @@ class FirestoreService {
   }) {
     // SOS usa id_guardiao; normal usa guardioesNotificados (regra de separação)
     Query<Map<String, dynamic>> sosQuery = ocorrencias
-        .where('isSos', isEqualTo: true)
+        .where('gravidade', isEqualTo: 'Gravíssima')
         .where('id_guardiao', arrayContains: guardiaoUid);
 
     Query<Map<String, dynamic>> normalQuery = ocorrencias
-        .where('isSos', isEqualTo: false)
+        .where('gravidade', isNotEqualTo: 'Gravíssima')
         .where('guardioesNotificados', arrayContains: guardiaoUid);
 
     if (status != null && status.isNotEmpty) {
@@ -97,6 +97,7 @@ class FirestoreService {
         .map((snap) => snap.docs);
 
     final normalStream = normalQuery
+        .orderBy('gravidade')
         .orderBy('criadoEm', descending: true)
         .snapshots()
         .map((snap) => snap.docs);
@@ -513,7 +514,6 @@ class FirestoreService {
       longitude: longitude,
       idGuardiao: listaGuardioes,
       ownerUid: ownerUid,
-      isSos: true, // deixa explícito que é SOS
       dataHoraAbertura: DateTime.now(),
     );
 
@@ -537,8 +537,6 @@ class FirestoreService {
     List<String>? idGuardiao,  // Lista de IDs de guardiões
     required String ownerUid,  // ID do usuário criador da ocorrência
 
-    // novos parâmetros para compatibilizar com tela_registrar_ocorrencia.dart
-    bool? isSos,
     double? latitudeInicial,
     double? longitudeInicial,
     DateTime? dataHoraAbertura,
@@ -547,7 +545,7 @@ class FirestoreService {
     if (user == null) throw Exception('Usuário não autenticado');
 
     final midiasLocais = List<String>.from(anexosLocais ?? const []);
-    final bool sosFlag = isSos ?? (tipo.toUpperCase() == 'SOS');
+    final bool sosFlag = gravidade == 'Gravíssima';
 
     // Se latitude/longitude "diretas" não vierem, usa as iniciais
     final double? latEfetiva = latitude ?? latitudeInicial;
@@ -556,7 +554,6 @@ class FirestoreService {
     final List<String> guardioes = List<String>.from(idGuardiao ?? const []);
 
     final Map<String, dynamic> baseData = {
-      'id_usuario': ownerUid,
       'ownerUid': ownerUid,
       'status': 'aberto',
       'gravidade': gravidade,
@@ -566,7 +563,6 @@ class FirestoreService {
       'criadoEm': FieldValue.serverTimestamp(),
       'anexosLocais': midiasLocais,
       'anexos': [],
-      'isSos': sosFlag,
     };
 
     // Regra: SOS e ocorrência normal não compartilham os mesmos campos de guardião
@@ -808,7 +804,7 @@ class FirestoreService {
     return q.orderBy('criadoEm', descending: true).snapshots();
   }
 
-  /// Agora filtra apenas o SOS aberto (`isSos == true`),
+  /// Agora filtra apenas o SOS aberto (gravidade == 'Gravíssima'),
   /// para o tracker não pegar ocorrência normal.
   Future<String?> _getSosAbertoDocIdAtual() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -817,7 +813,7 @@ class FirestoreService {
     final snap = await ocorrencias
         .where('ownerUid', isEqualTo: user.uid)
         .where('status', isEqualTo: 'aberto')
-        .where('isSos', isEqualTo: true)
+        .where('gravidade', isEqualTo: 'Gravíssima')
         .limit(1)
         .get();
 

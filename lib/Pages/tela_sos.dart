@@ -488,7 +488,6 @@ class _TelaVitimaSOSState extends State<TelaVitimaSOS> {
       anexosLocais: const [],
       idGuardiao: guardioesIds,
       ownerUid: uid,
-      isSos: true,
       latitudeInicial: pos.latitude,
       longitudeInicial: pos.longitude,
       dataHoraAbertura: agora,
