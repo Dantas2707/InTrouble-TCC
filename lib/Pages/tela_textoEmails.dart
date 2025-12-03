@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crud/services/firestore.dart' as fsFirestore;
 import 'package:crud/services/enviar_email.dart' as es;
 import 'package:crud/theme/app_colors.dart';
+
 class TelaTextoEmails extends StatefulWidget {
   const TelaTextoEmails({Key? key}) : super(key: key);
 
@@ -18,21 +19,21 @@ class _TelaTextoEmailsState extends State<TelaTextoEmails> {
   final _nomeController = TextEditingController();
   final _textoController = TextEditingController();
 
-  // Alterado para QueryDocumentSnapshot, pois estamos trabalhando com Firestore diretamente
-  QueryDocumentSnapshot<Object?>? _selectedDoc;
+  // Documento selecionado para edição
+  QueryDocumentSnapshot<Map<String, dynamic>>? _selectedDoc;
 
-  // Para armazenar as tags e a tag selecionada
+  // Tags suportadas pelo backend de e-mail
   String? _selectedTag;
   final List<String> _tags = es.EmailBackendService.supportedTags;
 
-  // Variável para o estado de "Ativo" ou "Inativo"
+  // Estado de ativo/inativo
   bool _ativo = true;
 
-  // Variável para alternar entre modos de edição
+  // Controle se está em modo edição
   bool isEditing = false;
 
   // ==========================
-  // Função de buscar o texto de e-mail
+  // Buscar texto pelo nome (opcional)
   // ==========================
   Future<void> _buscarTextoEmail(String nome) async {
     if (nome.isEmpty) return;
@@ -40,11 +41,12 @@ class _TelaTextoEmailsState extends State<TelaTextoEmails> {
     final docSnapshot = await firestoreService.buscarTextoEmail(nome);
     if (docSnapshot != null) {
       setState(() {
+        _selectedDoc = docSnapshot;
         _nomeController.text = docSnapshot['nome'] ?? '';
-        _textoController.text = docSnapshot['textoEmail'] ?? docSnapshot['corpo'] ?? '';
-        _selectedDoc = docSnapshot;  // Agora, armazenando o QueryDocumentSnapshot
-        _ativo = !(docSnapshot['inativar'] ?? false); // Definir estado de ativo/inativo com base no Firestore
-        isEditing = true;  // Muda para o modo de edição
+        _textoController.text =
+            docSnapshot['textoEmail'] ?? docSnapshot['corpo'] ?? '';
+        _ativo = !(docSnapshot['inativar'] ?? false);
+        isEditing = true;
       });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -54,10 +56,9 @@ class _TelaTextoEmailsState extends State<TelaTextoEmails> {
   }
 
   // ==========================
-  // Salvar ou atualizar texto de e-mail
+  // Salvar/atualizar texto de e-mail
   // ==========================
   Future<void> _salvarTextoEmail() async {
-    // Verifique se o formulário é válido
     if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Preencha todos os campos obrigatórios!')),
@@ -67,17 +68,24 @@ class _TelaTextoEmailsState extends State<TelaTextoEmails> {
 
     try {
       if (_selectedDoc != null) {
-        // Atualização
         await firestoreService.alterarTextoEmail(
-          _selectedDoc!.id,  // Agora usando o 'id' do QueryDocumentSnapshot
+          _selectedDoc!.id,
           _nomeController.text.trim(),
           _textoController.text.trim(),
-          !_ativo,  // Passando o estado de ativação como "inativo" (invertido)
+          !_ativo, // inativar = !ativo
         );
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Texto de e-mail atualizado com sucesso!')),
         );
-        _selectedDoc = null;
+
+        setState(() {
+          _selectedDoc = null;
+          isEditing = false;
+          _nomeController.clear();
+          _textoController.clear();
+          _ativo = true;
+        });
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -87,23 +95,28 @@ class _TelaTextoEmailsState extends State<TelaTextoEmails> {
   }
 
   // ==========================
-  // Inserir Tag no Texto
+  // Inserir TAG no texto
   // ==========================
   void _insertTagInFocusedField() {
     final tag = _selectedTag;
     if (tag == null) return;
 
-    // Definindo qual campo será modificado (corpo do texto)
     final targetCtrl = _textoController;
-
     final textoAtual = targetCtrl.text;
     targetCtrl.text = '$textoAtual $tag';
     targetCtrl.selection =
         TextSelection.fromPosition(TextPosition(offset: targetCtrl.text.length));
   }
 
+  @override
+  void dispose() {
+    _nomeController.dispose();
+    _textoController.dispose();
+    super.dispose();
+  }
+
   // ==========================
-  // Build da tela
+  // Build
   // ==========================
   @override
   Widget build(BuildContext context) {
@@ -117,56 +130,58 @@ class _TelaTextoEmailsState extends State<TelaTextoEmails> {
         child: Column(
           children: [
             // ==========================
-            // Campos de Edição no topo
+            // Área de edição (só aparece se tiver algo selecionado)
             // ==========================
             if (isEditing)
               Form(
                 key: _formKey,
                 child: Column(
                   children: [
-                    // Nome do texto de e-mail
+                    // Nome do texto
                     TextFormField(
                       controller: _nomeController,
                       decoration: const InputDecoration(
                         labelText: 'Nome do Texto de E-mail',
                         border: OutlineInputBorder(),
                       ),
-                      validator: (value) => value == null || value.trim().isEmpty
-                          ? 'Campo obrigatório'
-                          : null,
+                      validator: (value) =>
+                          value == null || value.trim().isEmpty
+                              ? 'Campo obrigatório'
+                              : null,
                     ),
                     const SizedBox(height: 12),
 
-                    // Texto do e-mail
+                    // Corpo do e-mail
                     TextFormField(
                       controller: _textoController,
-                      maxLines: 3,
+                      maxLines: 5,
                       decoration: const InputDecoration(
                         labelText: 'Texto do E-mail',
                         border: OutlineInputBorder(),
-                        hintText: 'Ex: Conteúdo do e-mail',
+                        hintText: 'Conteúdo do e-mail enviado ao guardião/usuário',
                       ),
-                      validator: (value) => value == null || value.trim().isEmpty
-                          ? 'Campo obrigatório'
-                          : null,
+                      validator: (value) =>
+                          value == null || value.trim().isEmpty
+                              ? 'Campo obrigatório'
+                              : null,
                     ),
                     const SizedBox(height: 12),
 
-                    // Checkbox de Ativo
+                    // Ativo / Inativo
                     Row(
                       children: [
                         Checkbox(
                           value: _ativo,
-                          onChanged: (v) => setState(() => _ativo = v ?? true),
+                          onChanged: (v) {
+                            setState(() => _ativo = v ?? true);
+                          },
                         ),
                         const Text('Ativo'),
                       ],
                     ),
                     const SizedBox(height: 12),
 
-                    // ==========================
-                    // Dropdown de TAGS (da lista)
-                    // ==========================
+                    // Tags
                     Row(
                       children: [
                         Expanded(
@@ -176,10 +191,12 @@ class _TelaTextoEmailsState extends State<TelaTextoEmails> {
                             isExpanded: true,
                             onChanged: (v) => setState(() => _selectedTag = v),
                             items: _tags
-                                .map((t) => DropdownMenuItem<String>(
-                                      value: t,
-                                      child: Text(t),
-                                    ))
+                                .map(
+                                  (t) => DropdownMenuItem<String>(
+                                    value: t,
+                                    child: Text(t),
+                                  ),
+                                )
                                 .toList(),
                           ),
                         ),
@@ -193,7 +210,7 @@ class _TelaTextoEmailsState extends State<TelaTextoEmails> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Botão de salvar
+                    // Botão salvar
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -201,35 +218,47 @@ class _TelaTextoEmailsState extends State<TelaTextoEmails> {
                         child: const Text('Atualizar'),
                       ),
                     ),
+                    const Divider(height: 24),
                   ],
                 ),
               ),
 
-            const SizedBox(height: 16),
-
             // ==========================
-            // Lista de Textos de E-mail
+            // Lista de modelos de e-mail
             // ==========================
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: firestoreService.listarTodosTextosEmail(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                  final docs = snapshot.data!.docs;
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                  if (docs.isEmpty) return const Center(child: Text('Nenhum texto de e-mail cadastrado.'));
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const Center(
+                      child: Text('Nenhum texto de e-mail cadastrado.'),
+                    );
+                  }
+
+                  final docs = snapshot.data!.docs;
 
                   return ListView.builder(
                     itemCount: docs.length,
                     itemBuilder: (context, index) {
                       final doc = docs[index];
                       final nome = doc['nome'] ?? '';
-                      final inativo = doc['inativar'] ?? false;
+                      final inativar = doc['inativar'] ?? false;
 
                       return Card(
-                        color: Colors.white,
                         child: ListTile(
                           title: Text(nome),
+                          subtitle: Text(
+                            inativar ? 'Inativo' : 'Ativo',
+                            style: TextStyle(
+                              color: inativar ? Colors.red : Colors.green,
+                              fontSize: 12,
+                            ),
+                          ),
                           trailing: IconButton(
                             icon: Icon(
                               isEditing && _selectedDoc?.id == doc.id
@@ -241,15 +270,21 @@ class _TelaTextoEmailsState extends State<TelaTextoEmails> {
                             ),
                             onPressed: () {
                               setState(() {
-                                if (_selectedDoc?.id == doc.id) {
-                                  _selectedDoc = null; // Desmarcar e sair do modo de edição
-                                  isEditing = false; // Sair do modo de edição
+                                if (_selectedDoc?.id == doc.id && isEditing) {
+                                  // Se clicar de novo no mesmo: cancela edição
+                                  _selectedDoc = null;
+                                  isEditing = false;
+                                  _nomeController.clear();
+                                  _textoController.clear();
+                                  _ativo = true;
                                 } else {
+                                  // Entrar em modo edição
                                   _selectedDoc = doc;
                                   _nomeController.text = nome;
-                                  _textoController.text = doc['textoEmail'] ?? '';
+                                  _textoController.text =
+                                      doc['textoEmail'] ?? doc['corpo'] ?? '';
                                   _ativo = !(doc['inativar'] ?? false);
-                                  isEditing = true; // Entrar no modo de edição
+                                  isEditing = true;
                                 }
                               });
                             },

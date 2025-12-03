@@ -110,7 +110,7 @@ class _TelaUsuarioState extends State<TelaUsuario> {
       context: context,
       initialDate: DateTime(hoje.year - 20),
       firstDate: DateTime(hoje.year - 120),
-      lastDate: DateTime(hoje.year - 13),
+      lastDate: DateTime(hoje.year - 4),
       locale: const Locale('pt', 'BR'),
       helpText: 'Selecione a data de nascimento',
       cancelText: 'Cancelar',

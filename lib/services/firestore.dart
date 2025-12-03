@@ -878,15 +878,6 @@ class FirestoreService {
     });
   }
 
-  Future<void> alterarTextoEmail(
-      String id, String nome, String textoEmail, bool inativar) async {
-    await textosEmails.doc(id).update({
-      'nome': nome.trim(),
-      'textoEmail': textoEmail.trim(),
-      'inativar': inativar,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-  }
 
   Future<void> excluirTextosEmails(String docId) async {
     await textosEmails.doc(docId).delete();
@@ -914,21 +905,7 @@ class FirestoreService {
     }
   }
 
-  Future<QueryDocumentSnapshot<Object?>?> buscarTextoEmail(String nome) async {
-    try {
-      final qs =
-          await textosEmails.where('nome', isEqualTo: nome).limit(1).get();
-      if (qs.docs.isNotEmpty) return qs.docs.first;
-      return null;
-    } catch (e) {
-      debugPrint("Erro ao buscar o texto de e-mail: $e");
-      return null;
-    }
-  }
 
-  Stream<QuerySnapshot> listarTodosTextosEmail() {
-    return textosEmails.orderBy('timestamp', descending: true).snapshots();
-  }
 
   Future<List<String>> listarNomesTextosEmails() async {
     final query = await textosEmails.where('inativar', isEqualTo: false).get();
@@ -936,6 +913,76 @@ class FirestoreService {
         .map((doc) => (doc['nome'] ?? '').toString())
         .where((nome) => nome.isNotEmpty)
         .toList();
+  }
+  /// Lista todos os textos de e-mail.
+  ///
+  /// Se [apenasAtivos] for `true`, retorna só os que NÃO estão marcados
+  /// com `inativar == true`.
+  Stream<QuerySnapshot<Map<String, dynamic>>> listarTodosTextosEmail({
+    bool apenasAtivos = false,
+  }) {
+    Query<Map<String, dynamic>> query =
+        textosEmails.orderBy('nome', descending: false);
+
+    if (apenasAtivos) {
+      query = query.where('inativar', isEqualTo: false);
+    }
+
+    return query.snapshots();
+  }
+
+  /// Busca um texto de e-mail pelo campo "nome".
+  ///
+  /// Se [incluirInativos] for false, ignora documentos com `inativar == true`.
+  Future<QueryDocumentSnapshot<Map<String, dynamic>>?>
+      buscarTextoEmail(String nome, {bool incluirInativos = true}) async {
+    Query<Map<String, dynamic>> query = textosEmails
+        .where('nome', isEqualTo: nome)
+        .limit(1);
+
+    if (!incluirInativos) {
+      query = query.where('inativar', isEqualTo: false);
+    }
+
+    final qs = await query.get();
+
+    if (qs.docs.isEmpty) return null;
+    return qs.docs.first;
+  }
+
+  /// Atualiza um texto de e-mail existente.
+  ///
+  /// [id] → id do documento na coleção textosEmails
+  /// [nome] → nome do modelo (ex: "sos_guardiao")
+  /// [textoEmail] → corpo do e-mail (campo `textoEmail`)
+  /// [inativar] → se true, marca o modelo como inativo
+  Future<void> alterarTextoEmail(
+    String id,
+    String nome,
+    String textoEmail,
+    bool inativar,
+  ) async {
+    await textosEmails.doc(id).update({
+      'nome': nome,
+      'textoEmail': textoEmail,
+      'inativar': inativar,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// (Opcional) Criar um novo texto de e-mail, caso você queira usar depois.
+  Future<DocumentReference<Map<String, dynamic>>> criarTextoEmail({
+    required String nome,
+    required String textoEmail,
+    bool inativar = false,
+  }) async {
+    return await textosEmails.add({
+      'nome': nome,
+      'textoEmail': textoEmail,
+      'inativar': inativar,
+      'criadoEm': FieldValue.serverTimestamp(),
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    });
   }
 
   // ==============================================================
