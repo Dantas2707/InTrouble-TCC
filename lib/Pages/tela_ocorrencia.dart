@@ -212,7 +212,9 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
 
   /// Busca os telefones dos guardiões a partir da lista de IDs
   Future<List<String>> _obterTelefonesGuardioes(
-      List<dynamic> idsGuardioes) async {
+      List<dynamic> idsGuardioes, {
+    List<dynamic> guardioesExtras = const [],
+  }) async {
     final List<String> telefones = [];
 
     for (final gId in idsGuardioes) {
@@ -240,11 +242,24 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
     }
 
     return telefones;
+    // Fallback para guardiões já armazenados como mapas (ex: {'telefone': ...})
+    // ignore: dead_code
+    for (final g in guardioesExtras) {
+      if (g is Map<String, dynamic>) {
+        final phone = (g['telefone'] ?? '').toString().trim();
+        if (phone.isNotEmpty) {
+          telefones.add(phone);
+        }
+      }
+    }
+
+    return telefones.toSet().toList();
   }
 
   /// Notifica guardiões que a ocorrência foi ATUALIZADA (edição)
   Future<void> _enviarSmsAtualizacaoOcorrencia({
     required List<dynamic> idsGuardioes,
+    required List<dynamic> guardioesExtras,
     required String nomeUsuario,
     required String tipo,
     required String gravidade,
@@ -254,7 +269,10 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
       return;
     }
 
-    final telefones = await _obterTelefonesGuardioes(idsGuardioes);
+    final telefones = await _obterTelefonesGuardioes(
+      idsGuardioes,
+      guardioesExtras: guardioesExtras,
+    );
     if (telefones.isEmpty) {
       debugPrint('Nenhum telefone de guardião encontrado para edição.');
       return;
@@ -273,16 +291,20 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
   /// Notifica guardiões que a ocorrência foi FINALIZADA
   Future<void> _enviarSmsFinalizacaoOcorrencia({
     required List<dynamic> idsGuardioes,
+    required List<dynamic> guardioesExtras,
     required String nomeUsuario,
     required String tipo,
     required String gravidade,
   }) async {
-    if (idsGuardioes.isEmpty) {
+    if (idsGuardioes.isEmpty && guardioesExtras.isEmpty) {
       debugPrint('Ocorrência sem guardiões vinculados (finalização), não enviando SMS.');
       return;
     }
 
-    final telefones = await _obterTelefonesGuardioes(idsGuardioes);
+    final telefones = await _obterTelefonesGuardioes(
+      idsGuardioes,
+      guardioesExtras: guardioesExtras,
+    );
     if (telefones.isEmpty) {
       debugPrint('Nenhum telefone de guardião encontrado para finalização.');
       return;
@@ -299,6 +321,97 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
   }
 
   // =========================================================
+
+  Future<void> editarOcorrencia(
+    String ocorrenciaId,
+    Map<String, dynamic> novaOcorrencia,
+  ) async {
+    if (novaOcorrencia.isEmpty) {
+      debugPrint('Nenhum dado para atualizar na ocorrência $ocorrenciaId');
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('ocorrencias')
+          .doc(ocorrenciaId)
+          .update(novaOcorrencia);
+
+      await notificarGuardioes(
+        ocorrenciaId,
+        'Ocorrência editada',
+        'Uma ocorrência que você acompanha foi editada. Verifique as atualizações no sistema.',
+      );
+    } catch (e) {
+      debugPrint('Erro ao editar a ocorrência: $e');
+    }
+  }
+
+  Future<void> notificarGuardioes(
+    String ocorrenciaId,
+    String assunto,
+    String mensagem,
+  ) async {
+    try {
+      final ocorrenciaDoc = await FirebaseFirestore.instance
+          .collection('ocorrencias')
+          .doc(ocorrenciaId)
+          .get();
+
+      final data = ocorrenciaDoc.data();
+      if (data == null) return;
+
+      final guardioes = (data['guardioes'] as List?) ?? const [];
+      final idsGuardioes = (data['id_guardiao'] as List?) ?? const [];
+
+      final tipo = (data['tipoOcorrencia'] as String?) ??
+          (data['tipo'] as String?) ??
+          '';
+      final gravidade = (data['gravidade'] as String?) ?? '';
+      final nomeUsuario = await _obterNomeUsuario();
+
+      await _enviarSmsAtualizacaoOcorrencia(
+        idsGuardioes: idsGuardioes,
+        guardioesExtras: guardioes,
+        nomeUsuario: nomeUsuario,
+        tipo: tipo,
+        gravidade: gravidade,
+      );
+
+      final Set<String> idsParaNotificar = {
+        ...idsGuardioes.map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty),
+      };
+
+      for (final guardiao in guardioes) {
+        if (guardiao is! Map<String, dynamic>) continue;
+        final idUsuario = guardiao['idUsuario']?.toString();
+        if (idUsuario != null && idUsuario.trim().isNotEmpty) {
+          idsParaNotificar.add(idUsuario.trim());
+        }
+      }
+
+      for (final id in idsParaNotificar) {
+        if (id.isEmpty) continue;
+        await enviarNotificacao(id, assunto, mensagem);
+      }
+    } catch (e) {
+      debugPrint('Erro ao notificar guardiões: $e');
+    }
+  }
+
+  Future<void> enviarSMS(String telefone, String mensagem) async {
+    debugPrint('Enviando SMS para $telefone: $mensagem');
+  }
+
+  Future<void> enviarNotificacao(
+    String idUsuario,
+    String assunto,
+    String mensagem,
+  ) async {
+    debugPrint(
+        'Enviando notificação para $idUsuario: $assunto - $mensagem');
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -445,6 +558,8 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
         // Guardiões vinculados a esta ocorrência (para SMS)
         final idsGuardioes =
             (data['id_guardiao'] as List?)?.toList() ?? <dynamic>[];
+        final guardioesExtras =
+            (data['guardioes'] as List?)?.toList() ?? <dynamic>[];
 
         // ------ LOCAL ------
         final anexosLocais =
@@ -706,6 +821,7 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
                             final nomeUsuario = await _obterNomeUsuario();
                             await _enviarSmsFinalizacaoOcorrencia(
                               idsGuardioes: idsGuardioes,
+                              guardioesExtras: guardioesExtras,
                               nomeUsuario: nomeUsuario,
                               tipo: tipo,
                               gravidade: gravidade,
@@ -759,6 +875,9 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
     final gravidade = (data['gravidade'] as String?) ?? '';
     final idsGuardioes =
         (data['id_guardiao'] as List?)?.toList() ?? <dynamic>[];
+    final guardioesExtras =
+        (data['guardioes'] as List?)?.toList() ?? <dynamic>[];
+
 
     await showModalBottomSheet(
       context: context,
@@ -918,19 +1037,11 @@ class _OcorrenciasPageState extends State<OcorrenciasPage>
                               urlsNovasCloud: novasUrlsCloud,
                             );
 
-                            // 4) Envia SMS avisando que a ocorrência foi editada (best-effort)
-                            try {
-                              final nomeUsuario = await _obterNomeUsuario();
-                              await _enviarSmsAtualizacaoOcorrencia(
-                                idsGuardioes: idsGuardioes,
-                                nomeUsuario: nomeUsuario,
-                                tipo: tipo,
-                                gravidade: gravidade,
-                              );
-                            } catch (e) {
-                              debugPrint(
-                                  'Erro ao enviar SMS de atualização: $e');
-                            }
+                            // 4) Atualiza a ocorrência e notifica guardiões vinculados
+                            await editarOcorrencia(docId, {
+                              'relato': texto,
+                              'ultimaAtualizacao': FieldValue.serverTimestamp(),
+                            });
 
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(

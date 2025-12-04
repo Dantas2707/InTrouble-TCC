@@ -9,6 +9,12 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:crud/theme/app_colors.dart';
 
+const kRosaMuitoClaro = AppColors.primaryLight;
+const kRosaClaro = AppColors.primary;
+const kRosaMedio = AppColors.primaryMedium;
+const kRosaSuave = AppColors.primarySoft;
+const kCinzaClaro = AppColors.grayLight;
+
 class OcorrenciaPage extends StatefulWidget {
   const OcorrenciaPage({super.key});
 
